@@ -19,6 +19,17 @@ interface AgoraTokenResponse {
 // Get Agora token from Duneli backend API (SECURE - SERVER SIDE ONLY)
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+// Helper: Supabase UUID → consistent numeric Agora UID
+// Agora requires numeric UID; we hash the UUID to a stable number
+const toAgoraUid = (userId: string): number => {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash) + userId.charCodeAt(i);
+    hash |= 0; // Convert to 32-bit int
+  }
+  return Math.abs(hash) % 100000; // Keep it small and positive
+};
+
 export const getAgoraToken = async (
   channelName: string,
   userId: string,
@@ -28,7 +39,7 @@ export const getAgoraToken = async (
     const res = await fetch(`${BACKEND_URL}/api/agora/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channelName, userId, role }),
+      body: JSON.stringify({ channelName, userId: toAgoraUid(userId), role }),
     });
 
     if (!res.ok) {
@@ -91,8 +102,9 @@ export const joinAgoraChannel = async (
       });
     }
 
-    // Join channel — null token = App ID only mode (testing)
-    await agoraClient.join(AGORA_APP_ID, channelName, token || null, userId);
+    // Join channel with same numeric UID used in token generation
+    const numericUid = toAgoraUid(userId);
+    await agoraClient.join(AGORA_APP_ID, channelName, token || null, numericUid);
 
     // Create and publish audio track for speakers and debaters ONLY
     if (role === 'speaker' || role === 'debater') {
