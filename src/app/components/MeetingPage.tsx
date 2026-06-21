@@ -175,16 +175,32 @@ export function MeetingPage({
         await joinAgoraChannel(discussion.id, userId, userRole);
         if (cancelled) return;
         setAgoraJoined(true);
+
+        // Apna participant add karo
         setParticipants([{ id: userId, name: userName, role: userRole, isSpeaking: false }]);
+
         const client = getAgoraClient();
         if (client) {
+          // ── Existing users jo pehle se channel mein hain unhe add karo ──
+          client.remoteUsers.forEach(user => {
+            setParticipants(prev => {
+              if (prev.find(p => p.id === String(user.uid))) return prev;
+              return [...prev, {
+                id: String(user.uid),
+                name: `User-${String(user.uid)}`,
+                role: 'listener' as Role,
+                isSpeaking: false,
+              }];
+            });
+          });
+
           client.on('user-joined', (user) => {
             setParticipants(prev => {
               if (prev.find(p => p.id === String(user.uid))) return prev;
-              return [...prev, { id: String(user.uid), name: `User-${String(user.uid).slice(0, 6)}`, role: 'listener', isSpeaking: false }];
+              return [...prev, { id: String(user.uid), name: `User-${String(user.uid)}`, role: 'listener' as Role, isSpeaking: false }];
             });
           });
-          client.on('user-left',      (user) => setParticipants(prev => prev.filter(p => p.id !== String(user.uid))));
+          client.on('user-left', (user) => setParticipants(prev => prev.filter(p => p.id !== String(user.uid))));
           client.on('user-published', (user, mediaType) => {
             if (mediaType === 'audio') setParticipants(prev => prev.map(p => p.id === String(user.uid) ? { ...p, isSpeaking: true } : p));
           });
@@ -199,11 +215,34 @@ export function MeetingPage({
           }).catch(() => {});
         }
 
-        // ── Supabase Realtime: hand-raise broadcast ──────────
+        // ── Supabase Realtime: participants sync + hand-raise broadcast ──
         const channel = supabase.channel(`meeting:${discussion.id}`, {
-          config: { broadcast: { self: false } },
+          config: { broadcast: { self: false }, presence: { key: userId } },
         });
+
         channel
+          // Presence — real-time participant list with names
+          .on('presence', { event: 'sync' }, () => {
+            const state = channel.presenceState<{ name: string; role: string }>();
+            Object.entries(state).forEach(([presenceKey, presences]) => {
+              const p = (presences as any[])[0];
+              if (!p) return;
+              setParticipants(prev => prev.map(participant =>
+                participant.id === presenceKey
+                  ? { ...participant, name: p.name, role: p.role as Role }
+                  : participant
+              ));
+            });
+          })
+          .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
+            const p = newPresences[0];
+            setParticipants(prev => prev.map(participant =>
+              participant.id === key
+                ? { ...participant, name: p.name, role: p.role as Role }
+                : participant
+            ));
+          })
+          // Hand raise broadcast
           .on('broadcast', { event: 'hand_raise' }, ({ payload }: any) => {
             setParticipants(prev => prev.map(p =>
               p.id === payload.userId
@@ -211,7 +250,13 @@ export function MeetingPage({
                 : p
             ));
           })
-          .subscribe();
+          .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+              // Apna presence track karo with name + role
+              await channel.track({ name: userName, role: userRole });
+            }
+          });
+
         realtimeRef.current = channel;
       } catch (err: any) {
         if (!cancelled) setAgoraError(err.message || 'Failed to join audio');
