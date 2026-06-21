@@ -225,30 +225,20 @@ export function MeetingPage({
         channel
           // Presence — real-time participant list with names + roles
           .on('presence', { event: 'sync' }, () => {
-            const state = channel.presenceState<{ name: string; role: string; agoraUid: string; userId: string }>();
-            // Saare presence entries se participants update karo
+            const state = channel.presenceState<{ name: string; role: string; agoraUid: string; userId: string; handRaised: boolean }>();
             Object.values(state).forEach((presences: any[]) => {
               const p = presences[0];
               if (!p) return;
               setParticipants(prev => {
-                // Agar ye user already list mein hai toh update karo
-                const exists = prev.find(participant =>
-                  participant.id === p.agoraUid || participant.id === p.userId
-                );
+                const exists = prev.find(pt => pt.id === p.agoraUid || pt.id === p.userId);
                 if (exists) {
-                  return prev.map(participant =>
-                    participant.id === p.agoraUid || participant.id === p.userId
-                      ? { ...participant, name: p.name, role: p.role as Role }
-                      : participant
+                  return prev.map(pt =>
+                    pt.id === p.agoraUid || pt.id === p.userId
+                      ? { ...pt, name: p.name, role: p.role as Role, handRaised: p.handRaised ?? false }
+                      : pt
                   );
                 }
-                // Agar list mein nahi hai toh add karo (late joiner ke liye)
-                return [...prev, {
-                  id: p.agoraUid,
-                  name: p.name,
-                  role: p.role as Role,
-                  isSpeaking: false,
-                }];
+                return [...prev, { id: p.agoraUid, name: p.name, role: p.role as Role, isSpeaking: false, handRaised: p.handRaised ?? false }];
               });
             });
           })
@@ -256,22 +246,15 @@ export function MeetingPage({
             const p = newPresences[0];
             if (!p) return;
             setParticipants(prev => {
-              const exists = prev.find(participant =>
-                participant.id === p.agoraUid || participant.id === p.userId
-              );
+              const exists = prev.find(pt => pt.id === p.agoraUid || pt.id === p.userId);
               if (exists) {
-                return prev.map(participant =>
-                  participant.id === p.agoraUid || participant.id === p.userId
-                    ? { ...participant, name: p.name, role: p.role as Role }
-                    : participant
+                return prev.map(pt =>
+                  pt.id === p.agoraUid || pt.id === p.userId
+                    ? { ...pt, name: p.name, role: p.role as Role, handRaised: p.handRaised ?? false }
+                    : pt
                 );
               }
-              return [...prev, {
-                id: p.agoraUid,
-                name: p.name,
-                role: p.role as Role,
-                isSpeaking: false,
-              }];
+              return [...prev, { id: p.agoraUid, name: p.name, role: p.role as Role, isSpeaking: false, handRaised: p.handRaised ?? false }];
             });
           })
           // Hand raise broadcast
@@ -291,23 +274,24 @@ export function MeetingPage({
                 role: userRole,
                 agoraUid: String(toAgoraUid(userId)),
                 userId,
+                handRaised: false,
               });
 
               // Late joiner: subscribe hote hi existing presence state fetch karo
-              const state = channel.presenceState<{ name: string; role: string; agoraUid: string; userId: string }>();
+              const state = channel.presenceState<{ name: string; role: string; agoraUid: string; userId: string; handRaised: boolean }>();
               Object.values(state).forEach((presences: any[]) => {
                 const p = presences[0];
-                if (!p || p.userId === userId) return; // apna skip karo
+                if (!p || p.userId === userId) return;
                 setParticipants(prev => {
                   const exists = prev.find(pt => pt.id === p.agoraUid || pt.id === p.userId);
                   if (exists) {
                     return prev.map(pt =>
                       pt.id === p.agoraUid || pt.id === p.userId
-                        ? { ...pt, name: p.name, role: p.role as Role }
+                        ? { ...pt, name: p.name, role: p.role as Role, handRaised: p.handRaised ?? false }
                         : pt
                     );
                   }
-                  return [...prev, { id: p.agoraUid, name: p.name, role: p.role as Role, isSpeaking: false }];
+                  return [...prev, { id: p.agoraUid, name: p.name, role: p.role as Role, isSpeaking: false, handRaised: p.handRaised ?? false }];
                 });
               });
             }
@@ -532,6 +516,7 @@ export function MeetingPage({
                   const next = !handRaised;
                   setHandRaised(next);
                   if (realtimeRef.current && currentUserId) {
+                    // Broadcast — existing users ke liye
                     realtimeRef.current.send({
                       type: 'broadcast',
                       event: 'hand_raise',
@@ -542,8 +527,16 @@ export function MeetingPage({
                         raised: next,
                       },
                     });
+                    // Presence update — late joiners ke liye
+                    realtimeRef.current.track({
+                      name: userName,
+                      role: userRole,
+                      agoraUid: String(toAgoraUid(currentUserId)),
+                      userId: currentUserId,
+                      handRaised: next,
+                    });
                   }
-                  // Apna card bhi update karo
+                  // Apna card update karo
                   setParticipants(prev => prev.map(p =>
                     p.id === String(toAgoraUid(currentUserId || '')) || p.id === currentUserId
                       ? { ...p, handRaised: next }
