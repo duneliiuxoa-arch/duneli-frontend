@@ -3,6 +3,11 @@
 
 @import 'tw-animate-css';
 
+/* Extra small breakpoint — chhote phones (iPhone SE etc.) ke liye, 3-col grids ko 2-col se 3-col mein transition karne ke liye */
+@theme {
+  --breakpoint-xs: 420px;
+}
+
 /* Additional global styles for DUNELI */
 @layer base {
   html {
@@ -21,5 +26,10 @@
   
   .backdrop-blur-lg {
     backdrop-filter: blur(16px);
+  }
+
+  /* iPhone home-indicator/notch ke neeche content na dabe — mobile bottom sheets/bars ke liye */
+  .safe-area-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
   }
 }

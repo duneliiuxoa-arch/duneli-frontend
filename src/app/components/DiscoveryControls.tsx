@@ -61,27 +61,27 @@ export function DiscoveryControls({
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-4">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-4">
       {/* Mode Toggle */}
       <div className={`${theme.cardStyle} rounded-full p-1 flex items-center gap-1`}>
         <button
           onClick={() => onModeChange('interest')}
-          className={`px-6 py-2 rounded-full transition-all ${
+          className={`px-3 py-2 sm:px-6 rounded-full transition-all text-sm sm:text-base ${
             mode === 'interest' ? theme.buttonClass : 'hover:bg-white/10'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <TrendingUp className="w-4 h-4" />
             <span>Interest</span>
           </div>
         </button>
         <button
           onClick={() => onModeChange('categories')}
-          className={`px-6 py-2 rounded-full transition-all ${
+          className={`px-3 py-2 sm:px-6 rounded-full transition-all text-sm sm:text-base ${
             mode === 'categories' ? theme.buttonClass : 'hover:bg-white/10'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <Grid3x3 className="w-4 h-4" />
             <span>Categories</span>
           </div>
@@ -93,7 +93,7 @@ export function DiscoveryControls({
         <div className="relative" ref={categoryRef}>
           <button
             onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-            className={`${theme.cardStyle} rounded-full px-6 py-2 flex items-center gap-2 hover:scale-105 transition-transform`}
+            className={`${theme.cardStyle} rounded-full px-4 py-2 sm:px-6 flex items-center gap-2 hover:scale-105 transition-transform text-sm sm:text-base`}
           >
             <span>{selectedCategory}</span>
             <ChevronDown className="w-4 h-4" />
@@ -131,7 +131,7 @@ export function DiscoveryControls({
       <div className="relative" ref={languageRef}>
         <button
           onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-          className={`${theme.cardStyle} rounded-full px-6 py-2 flex items-center gap-2 hover:scale-105 transition-transform`}
+          className={`${theme.cardStyle} rounded-full px-4 py-2 sm:px-6 flex items-center gap-2 hover:scale-105 transition-transform text-sm sm:text-base`}
         >
           <Globe className="w-4 h-4" />
           <span>{selectedLanguage}</span>
@@ -169,9 +169,9 @@ export function DiscoveryControls({
       <div className="relative ml-auto" ref={sortRef}>
         <button
           onClick={() => setShowSortDropdown(!showSortDropdown)}
-          className={`${theme.cardStyle} rounded-full px-6 py-2 flex items-center gap-2 hover:scale-105 transition-transform`}
+          className={`${theme.cardStyle} rounded-full px-4 py-2 sm:px-6 flex items-center gap-1.5 sm:gap-2 hover:scale-105 transition-transform text-sm sm:text-base`}
         >
-          <span className="text-sm opacity-70">Sort:</span>
+          <span className="hidden sm:inline text-sm opacity-70">Sort:</span>
           <span>{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
           <ChevronDown className="w-4 h-4" />
         </button>

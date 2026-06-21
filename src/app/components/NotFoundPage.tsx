@@ -32,7 +32,7 @@ export function NotFoundPage({ currentTheme, onBack, currentPath = '' }: Props) 
 
   return (
     <div
-      className={`min-h-screen flex flex-col items-center justify-center px-6 py-16 ${theme.textColor}`}
+      className={`min-h-screen flex flex-col items-center justify-center px-4 py-12 sm:px-6 sm:py-16 ${theme.textColor}`}
       style={{ background: theme.background, fontFamily: 'var(--font-body)' }}
     >
       {/* Back button */}
@@ -54,18 +54,18 @@ export function NotFoundPage({ currentTheme, onBack, currentPath = '' }: Props) 
         className="max-w-lg w-full text-center"
       >
         {/* 404 display */}
-        <div className="relative mb-8 select-none">
+        <div className="relative mb-6 sm:mb-8 select-none">
           <div
-            className="text-[120px] font-bold leading-none opacity-10 select-none"
+            className="text-[80px] sm:text-[120px] font-bold leading-none opacity-10 select-none"
             style={{ letterSpacing: '-4px' }}
           >
             404
           </div>
           <div className="absolute inset-0 flex items-center justify-center">
             <div
-              className={`w-16 h-16 rounded-2xl ${theme.cardStyle} flex items-center justify-center`}
+              className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl ${theme.cardStyle} flex items-center justify-center`}
             >
-              <Compass size={28} style={{ color: theme.accentColor }} />
+              <Compass size={24} style={{ color: theme.accentColor }} />
             </div>
           </div>
         </div>
@@ -101,26 +101,26 @@ export function NotFoundPage({ currentTheme, onBack, currentPath = '' }: Props) 
               {s.path.startsWith('mailto') ? (
                 <a
                   href={s.path}
-                  className={`flex items-center gap-4 px-5 py-4 rounded-xl ${theme.cardStyle} hover:scale-[1.02] transition-transform text-left w-full`}
+                  className={`flex items-center gap-3 sm:gap-4 px-4 py-3.5 sm:px-5 sm:py-4 rounded-xl ${theme.cardStyle} hover:scale-[1.02] transition-transform text-left w-full`}
                 >
                   <span className="text-xl">{s.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm">{s.label}</div>
                     <div className="text-xs opacity-50 mt-0.5">{s.desc}</div>
                   </div>
-                  <span className="text-xs opacity-40 font-mono truncate max-w-[120px]">{s.path}</span>
+                  <span className="hidden sm:inline text-xs opacity-40 font-mono truncate max-w-[120px]">{s.path}</span>
                 </a>
               ) : (
                 <button
                   onClick={s.path === '/' ? onBack : () => {/* handled via onBack for now */}}
-                  className={`flex items-center gap-4 px-5 py-4 rounded-xl ${theme.cardStyle} hover:scale-[1.02] transition-transform text-left w-full cursor-pointer`}
+                  className={`flex items-center gap-3 sm:gap-4 px-4 py-3.5 sm:px-5 sm:py-4 rounded-xl ${theme.cardStyle} hover:scale-[1.02] transition-transform text-left w-full cursor-pointer`}
                 >
                   <span className="text-xl">{s.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm">{s.label}</div>
                     <div className="text-xs opacity-50 mt-0.5">{s.desc}</div>
                   </div>
-                  <span className="text-xs opacity-40 font-mono">duneli.com{s.path}</span>
+                  <span className="hidden sm:inline text-xs opacity-40 font-mono">duneli.com{s.path}</span>
                 </button>
               )}
             </motion.div>

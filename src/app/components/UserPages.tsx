@@ -27,15 +27,15 @@ function PageShell({
       className={`min-h-screen ${theme.textColor}`}
       style={{ background: theme.background, fontFamily: 'var(--font-body)' }}
     >
-      <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <button
           onClick={onBack}
-          className={`flex items-center gap-2 mb-8 ${theme.textColor} opacity-70 hover:opacity-100 transition-opacity`}
+          className={`flex items-center gap-2 mb-6 sm:mb-8 ${theme.textColor} opacity-70 hover:opacity-100 transition-opacity`}
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back</span>
         </button>
-        <h1 className="text-3xl font-bold mb-8" style={{ fontFamily: 'var(--font-heading)' }}>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8" style={{ fontFamily: 'var(--font-heading)' }}>
           {title}
         </h1>
         {children}
@@ -119,11 +119,11 @@ export function MyActivityPage({
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className={`${theme.cardStyle} rounded-xl px-5 py-4`}
+                className={`${theme.cardStyle} rounded-xl px-4 sm:px-5 py-3 sm:py-4`}
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate">{a.meeting?.topic?.title ?? 'Unknown topic'}</p>
+                    <p className="font-semibold truncate text-sm sm:text-base">{a.meeting?.topic?.title ?? 'Unknown topic'}</p>
                     <p className="text-sm opacity-60 mt-0.5">
                       {new Date(a.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                       {duration !== null && ` · ${duration} min`}
@@ -178,11 +178,11 @@ export function MyTopicsPage({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className={`${theme.cardStyle} rounded-xl px-5 py-4`}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{t.title}</p>
+              className={`${theme.cardStyle} rounded-xl px-4 sm:px-5 py-3 sm:py-4`}
+              >
+              <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+              <p className="font-semibold truncate text-sm sm:text-base">{t.title}</p>
                   <div className="flex items-center gap-3 mt-1 text-sm opacity-60">
                     <span className="flex items-center gap-1">
                       <TrendingUp className="w-3 h-3" />
@@ -240,11 +240,11 @@ export function SupportedTopicsPage({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className={`${theme.cardStyle} rounded-xl px-5 py-4`}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{v.topic?.title ?? 'Unknown topic'}</p>
+              className={`${theme.cardStyle} rounded-xl px-4 sm:px-5 py-3 sm:py-4`}
+              >
+              <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+              <p className="font-semibold truncate text-sm sm:text-base">{v.topic?.title ?? 'Unknown topic'}</p>
                   <div className="flex items-center gap-3 mt-1 text-sm opacity-60">
                     <span>by {v.topic?.createdBy?.name ?? 'Unknown'}</span>
                     <span className="flex items-center gap-1">
@@ -292,11 +292,11 @@ export function SavedTopicsPage({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className={`${theme.cardStyle} rounded-xl px-5 py-4`}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{d.title}</p>
+              className={`${theme.cardStyle} rounded-xl px-4 sm:px-5 py-3 sm:py-4`}
+              >
+              <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+              <p className="font-semibold truncate text-sm sm:text-base">{d.title}</p>
                   <p className="text-sm opacity-60 mt-1 flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" />
                     {d.interestCount} votes
@@ -361,7 +361,7 @@ export function NotificationsPage({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
               onClick={() => onMarkAsRead(n.id)}
-              className={`${theme.cardStyle} rounded-xl px-5 py-4 cursor-pointer transition-opacity ${n.read ? 'opacity-60' : ''}`}
+              className={`${theme.cardStyle} rounded-xl px-4 sm:px-5 py-3 sm:py-4 cursor-pointer transition-opacity ${n.read ? 'opacity-60' : ''}`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">

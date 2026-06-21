@@ -327,7 +327,7 @@ export function MeetingPage({
       </div>
 
       {/* ── Main content ── */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* ── Left: Participants + Controls ── */}
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Agora error banner */}
@@ -373,7 +373,7 @@ export function MeetingPage({
           )}
 
           {/* Participants grid */}
-          <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 sm:grid-cols-4 gap-3 content-start">
+          <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3 content-start">
             {participants.map(p => (
               <div
                 key={p.id}
@@ -466,27 +466,49 @@ export function MeetingPage({
           </div>
         </div>
 
-        {/* ── Right: Chat panel ── */}
+        {/* ── Chat panel ──
+            Desktop (md+): fixed-width side panel, slides in from right
+            Mobile (<md):  full-width bottom sheet, slides up over participants */}
         <AnimatePresence>
           {chatOpen && (
-            <motion.div
-              key="chat"
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 300, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              className={`flex flex-col border-l overflow-hidden ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'}`}
-            >
-              {/* Chat header */}
-              <div className={`flex items-center justify-between px-3 py-2.5 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <span className="text-sm font-semibold flex items-center gap-1.5">
-                  <MessageSquare className="w-4 h-4 text-indigo-400" />
-                  Chat
-                </span>
-                <button onClick={() => setChatOpen(false)} className="opacity-40 hover:opacity-70 transition-opacity">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+            <>
+              {/* Mobile backdrop — sirf chhoti screen pe dikhta hai, tap to close */}
+              <motion.div
+                key="chat-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setChatOpen(false)}
+                className="md:hidden fixed inset-0 bg-black/40 z-40"
+              />
+
+              <motion.div
+                key="chat"
+                initial={{ y: '100%', opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: '100%', opacity: 0 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className={`flex flex-col overflow-hidden z-50
+                  fixed bottom-0 left-0 right-0 h-[75vh] rounded-t-2xl border-t
+                  md:static md:h-auto md:w-[300px] md:rounded-none md:border-t-0 md:border-l
+                  ${isDark ? 'border-white/10 bg-[#0f0f1a] md:bg-white/5' : 'border-gray-200 bg-white md:bg-gray-50'}`}
+              >
+                {/* Mobile drag handle */}
+                <div className="md:hidden flex justify-center pt-2 pb-1">
+                  <div className={`w-10 h-1 rounded-full ${isDark ? 'bg-white/20' : 'bg-gray-300'}`} />
+                </div>
+
+                {/* Chat header */}
+                <div className={`flex items-center justify-between px-3 py-2.5 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                  <span className="text-sm font-semibold flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-indigo-400" />
+                    Chat
+                  </span>
+                  <button onClick={() => setChatOpen(false)} className="opacity-40 hover:opacity-70 transition-opacity p-1">
+                    <X className="w-5 h-5 md:w-4 md:h-4" />
+                  </button>
+                </div>
 
               {/* Messages */}
               <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
@@ -514,27 +536,28 @@ export function MeetingPage({
                 <p className="text-xs text-red-400 px-3 pb-1">{chatError}</p>
               )}
 
-              {/* Input */}
-              <div className={`flex items-center gap-2 px-3 py-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={handleChatKey}
-                  placeholder="Type a message…"
-                  className={`flex-1 text-sm px-3 py-1.5 rounded-full outline-none ${
-                    isDark ? 'bg-white/10 placeholder:text-white/30 text-white' : 'bg-white border border-gray-200 text-gray-800 placeholder:text-gray-400'
-                  }`}
-                />
-                <button
-                  onClick={sendMessage}
-                  disabled={!chatInput.trim() || chatSending}
-                  className="p-1.5 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-40 transition-colors"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
-            </motion.div>
+                {/* Input */}
+                <div className={`flex items-center gap-2 px-3 py-2 border-t safe-area-bottom ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={handleChatKey}
+                    placeholder="Type a message…"
+                    className={`flex-1 text-sm px-3 py-2 md:py-1.5 rounded-full outline-none ${
+                      isDark ? 'bg-white/10 placeholder:text-white/30 text-white' : 'bg-white border border-gray-200 text-gray-800 placeholder:text-gray-400'
+                    }`}
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={!chatInput.trim() || chatSending}
+                    className="p-2.5 md:p-1.5 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-40 transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
       </div>

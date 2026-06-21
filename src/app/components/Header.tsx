@@ -34,18 +34,18 @@ export function Header({ user, currentTheme, onThemeChange, onLogin, onLogout, o
   }, [showUserMenu, showThemeMenu]);
 
   return (
-    <header className="w-full py-6 px-8">
+    <header className="w-full py-4 px-4 md:py-6 md:px-8">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Logo */}
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-full ${theme.buttonClass} flex items-center justify-center`}>
+        <div className="flex items-center gap-2 md:gap-3">
+          <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full ${theme.buttonClass} flex items-center justify-center flex-shrink-0`}>
             <span className="font-bold" style={{ fontFamily: 'var(--font-heading)' }}>D</span>
           </div>
           <div>
-            <h1 className={`text-2xl font-bold ${theme.textColor}`} style={{ fontFamily: 'var(--font-heading)' }}>
+            <h1 className={`text-lg md:text-2xl font-bold ${theme.textColor}`} style={{ fontFamily: 'var(--font-heading)' }}>
               DUNELI
             </h1>
-            <p className={`text-xs ${theme.textColor} opacity-60`}>#ideasNotPeople</p>
+            <p className={`text-[10px] md:text-xs ${theme.textColor} opacity-60`}>#ideasNotPeople</p>
           </div>
         </div>
 
@@ -72,7 +72,7 @@ export function Header({ user, currentTheme, onThemeChange, onLogin, onLogout, o
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className={`absolute right-0 mt-2 w-56 ${theme.cardStyle} rounded-xl overflow-hidden z-50`}
+                className={`absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-56 ${theme.cardStyle} rounded-xl overflow-hidden z-50`}
               >
                 {user.isLoggedIn ? (
                   <>

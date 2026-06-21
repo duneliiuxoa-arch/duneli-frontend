@@ -44,48 +44,48 @@ export function HappeningNow({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-8 sm:px-8 sm:py-12">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
           <div className="relative flex items-center">
-            <Radio className={`w-6 h-6 ${theme.textColor}`} />
+            <Radio className={`w-5 h-5 sm:w-6 sm:h-6 ${theme.textColor}`} />
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
             </span>
           </div>
           <h2 
-            className={`text-3xl font-bold ${theme.textColor}`}
+            className={`text-xl sm:text-3xl font-bold ${theme.textColor}`}
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             Happening Now
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           {liveDiscussions.map((discussion, index) => (
             <motion.div
               key={discussion.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              className={`${theme.cardStyle} rounded-3xl p-6 relative overflow-hidden`}
+              className={`${theme.cardStyle} rounded-3xl p-4 sm:p-6 relative overflow-hidden`}
             >
               {/* Live Indicator - Emphasized */}
-              <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-full font-medium shadow-lg">
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 bg-red-500 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-full font-medium shadow-lg">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                 </span>
-                <span className="text-sm uppercase tracking-wider">LIVE</span>
+                <span className="text-[10px] sm:text-sm uppercase tracking-wider">LIVE</span>
               </div>
 
               {/* Content */}
-              <div className="pr-24 mb-4">
-                <div className={`text-sm ${theme.textColor} opacity-70 mb-2 flex items-center gap-2`}>
+              <div className="pr-16 sm:pr-24 mb-3 sm:mb-4">
+                <div className={`text-xs sm:text-sm ${theme.textColor} opacity-70 mb-2 flex items-center gap-2 flex-wrap`}>
                   <span className={`px-3 py-1 rounded-full ${theme.cardStyle} text-xs`}>
                     {discussion.category}
                   </span>
@@ -94,13 +94,13 @@ export function HappeningNow({
                 </div>
                 
                 <h3 
-                  className={`text-xl font-semibold ${theme.textColor} mb-3 line-clamp-2`}
+                  className={`text-base sm:text-xl font-semibold ${theme.textColor} mb-2 sm:mb-3 line-clamp-2`}
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
                   {discussion.title}
                 </h3>
 
-                <div className={`text-sm ${theme.textColor} opacity-60 mb-4`}>
+                <div className={`text-xs sm:text-sm ${theme.textColor} opacity-60 mb-3 sm:mb-4`}>
                   <p>Hosted by {discussion.hostName}</p>
                   <p className="flex items-center gap-2 mt-1">
                     <Clock className="w-3 h-3" />

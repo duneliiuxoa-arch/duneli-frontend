@@ -53,7 +53,7 @@ export function NotificationPanel({
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-8 right-8 ${theme.buttonClass} w-14 h-14 rounded-full flex items-center justify-center shadow-lg z-40`}
+        className={`fixed bottom-6 right-4 sm:bottom-8 sm:right-8 ${theme.buttonClass} w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-lg z-40`}
       >
         <Bell className="w-6 h-6" />
         {unreadCount > 0 && (
@@ -85,10 +85,10 @@ export function NotificationPanel({
               initial={{ opacity: 0, y: 100 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 100 }}
-              className={`fixed bottom-0 right-0 w-full sm:w-96 h-[70vh] ${theme.cardStyle} rounded-t-3xl sm:rounded-3xl sm:bottom-8 sm:right-8 sm:h-[600px] z-50 flex flex-col`}
+              className={`fixed bottom-0 right-0 w-full sm:w-96 h-[80vh] sm:h-[600px] ${theme.cardStyle} rounded-t-3xl sm:rounded-3xl sm:bottom-8 sm:right-8 z-50 flex flex-col`}
             >
               {/* Header */}
-              <div className={`flex items-center justify-between p-6 border-b ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'}`}>
+              <div className={`flex items-center justify-between p-4 sm:p-6 border-b ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'}`}>
                 <h3 className={`font-semibold flex items-center gap-2 ${theme.textColor}`} style={{ fontFamily: 'var(--font-heading)' }}>
                   <Bell className="w-5 h-5" />
                   Notifications
@@ -102,7 +102,7 @@ export function NotificationPanel({
                   onClick={() => setIsOpen(false)}
                   className="p-2 hover:bg-white/10 rounded-full transition-colors"
                 >
-                  <X className={`w-5 h-5 ${theme.textColor}`} />
+                  <X className={`w-6 h-6 sm:w-5 sm:h-5 ${theme.textColor}`} />
                 </button>
               </div>
 
@@ -120,7 +120,7 @@ export function NotificationPanel({
                         key={notification.id}
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className={`p-4 border-b ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'} hover:bg-white/5 transition-colors ${
+                        className={`p-3 sm:p-4 border-b ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'} hover:bg-white/5 transition-colors ${
                           !notification.read ? 'bg-white/5' : ''
                         }`}
                       >
@@ -151,7 +151,7 @@ export function NotificationPanel({
 
               {/* Footer */}
               {notifications.length > 0 && unreadCount > 0 && (
-                <div className={`p-4 border-t ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'}`}>
+                <div className={`p-3 sm:p-4 border-t ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'} pb-safe`}>
                   <button
                     onClick={onMarkAllAsRead}
                     className={`w-full py-2 px-4 rounded-full ${theme.buttonClass} transition-colors`}

@@ -62,22 +62,22 @@ export function LeavingMeetingPage({
         className="max-w-2xl w-full"
       >
         {/* Thank You Message */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-8 sm:mb-12">
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: 'spring' }}
-            className="text-6xl mb-6"
+            className="text-5xl sm:text-6xl mb-4 sm:mb-6"
           >
             ✓
           </motion.div>
           <h1 
-            className={`text-4xl sm:text-5xl font-bold mb-4 ${theme.textColor}`}
+            className={`text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 ${theme.textColor}`}
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             Thanks for listening.
           </h1>
-          <p className={`text-lg ${theme.textColor} opacity-70 mb-2`}>
+          <p className={`text-base sm:text-lg ${theme.textColor} opacity-70 mb-2`}>
             {discussionTitle}
           </p>
         </div>
@@ -87,26 +87,26 @@ export function LeavingMeetingPage({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className={`${theme.cardStyle} rounded-3xl p-8 mb-6`}
+          className={`${theme.cardStyle} rounded-3xl p-5 sm:p-8 mb-6`}
         >
-          <h2 className={`text-xl font-semibold mb-6 text-center ${theme.textColor}`}>
+          <h2 className={`text-lg sm:text-xl font-semibold mb-4 sm:mb-6 text-center ${theme.textColor}`}>
             How did this discussion feel?
           </h2>
 
           {/* Feedback Options */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
             {feedbackOptions.map((option) => (
               <button
                 key={option.id}
                 onClick={() => setSelectedFeedback(option.id)}
-                className={`p-6 rounded-2xl transition-all hover:scale-105 ${
+                className={`p-4 sm:p-6 rounded-2xl transition-all hover:scale-105 ${
                   selectedFeedback === option.id
                     ? `${option.color} text-white`
                     : `${theme.cardStyle} hover:bg-white/10`
                 }`}
               >
-                <option.icon className="w-8 h-8 mx-auto mb-3" />
-                <p className="text-sm font-medium text-center">{option.label}</p>
+                <option.icon className="w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-2 sm:mb-3" />
+                <p className="text-xs sm:text-sm font-medium text-center">{option.label}</p>
               </button>
             ))}
           </div>
@@ -133,10 +133,10 @@ export function LeavingMeetingPage({
         </motion.div>
 
         {/* Action Buttons */}
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <button
             onClick={onReturnHome}
-            className={`flex-1 ${theme.cardStyle} hover:bg-white/10 px-6 py-4 rounded-2xl font-medium transition-all hover:scale-105 flex items-center justify-center gap-2 ${theme.textColor}`}
+            className={`flex-1 ${theme.cardStyle} hover:bg-white/10 px-6 py-3.5 sm:py-4 rounded-2xl font-medium transition-all hover:scale-105 flex items-center justify-center gap-2 ${theme.textColor} order-2 sm:order-1`}
           >
             <X className="w-5 h-5" />
             <span>Skip</span>
@@ -144,7 +144,7 @@ export function LeavingMeetingPage({
           
           <button
             onClick={handleSubmit}
-            className={`flex-1 ${theme.buttonClass} px-6 py-4 rounded-2xl font-medium transition-all hover:scale-105 flex items-center justify-center gap-2`}
+            className={`flex-1 ${theme.buttonClass} px-6 py-3.5 sm:py-4 rounded-2xl font-medium transition-all hover:scale-105 flex items-center justify-center gap-2 order-1 sm:order-2`}
           >
             <Home className="w-5 h-5" />
             <span>Return to Homepage</span>

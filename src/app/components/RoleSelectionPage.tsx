@@ -63,11 +63,11 @@ export function RoleSelectionPage({
       className={`min-h-screen ${theme.textColor}`}
       style={{ background: theme.background, fontFamily: 'var(--font-body)' }}
     >
-      <div className="max-w-6xl mx-auto px-8 py-12">
+      <div className="max-w-6xl mx-auto px-4 py-8 sm:px-8 sm:py-12">
         {/* Back Button */}
         <button
           onClick={onBack}
-          className={`${theme.cardStyle} rounded-full px-6 py-3 flex items-center gap-2 hover:scale-105 transition-all mb-8`}
+          className={`${theme.cardStyle} rounded-full px-4 py-2.5 sm:px-6 sm:py-3 flex items-center gap-2 hover:scale-105 transition-all mb-6 sm:mb-8 text-sm sm:text-base`}
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Homepage</span>
@@ -77,34 +77,34 @@ export function RoleSelectionPage({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
+          className="text-center mb-8 sm:mb-12"
         >
           <h1 
-            className={`text-4xl sm:text-5xl font-bold mb-4 ${theme.textColor}`}
+            className={`text-2xl sm:text-4xl md:text-5xl font-bold mb-4 ${theme.textColor}`}
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             How would you like to join this discussion?
           </h1>
           
           {/* Discussion Info */}
-          <div className={`${theme.cardStyle} rounded-2xl p-6 mt-8 max-w-3xl mx-auto`}>
-            <h2 className={`text-xl font-semibold mb-2 ${theme.textColor}`}>
+          <div className={`${theme.cardStyle} rounded-2xl p-4 sm:p-6 mt-6 sm:mt-8 max-w-3xl mx-auto`}>
+            <h2 className={`text-lg sm:text-xl font-semibold mb-2 ${theme.textColor}`}>
               {discussion.title}
             </h2>
-            <div className={`flex items-center justify-center gap-4 text-sm ${theme.textColor} opacity-70`}>
+            <div className={`flex flex-wrap items-center justify-center gap-2 sm:gap-4 text-xs sm:text-sm ${theme.textColor} opacity-70`}>
               <span className={`px-3 py-1 rounded-full ${theme.cardStyle}`}>
                 {discussion.category}
               </span>
-              <span>•</span>
+              <span className="hidden sm:inline">•</span>
               <span>{discussion.listenerCount} listening</span>
-              <span>•</span>
+              <span className="hidden sm:inline">•</span>
               <span>Hosted by {discussion.hostName}</span>
             </div>
           </div>
         </motion.div>
 
         {/* Role Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
           {roles.map((role, index) => (
             <motion.button
               key={role.id}
@@ -112,21 +112,21 @@ export function RoleSelectionPage({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
               onClick={() => onSelectRole(role.id)}
-              className={`${theme.cardStyle} rounded-3xl p-8 text-left hover:scale-105 transition-all group`}
+              className={`${theme.cardStyle} rounded-3xl p-5 sm:p-8 text-left hover:scale-105 transition-all group`}
             >
               {/* Icon */}
-              <div className={`w-16 h-16 rounded-full ${theme.buttonClass} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
-                <role.icon className="w-8 h-8" />
+              <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full ${theme.buttonClass} flex items-center justify-center mb-4 sm:mb-6 group-hover:scale-110 transition-transform`}>
+                <role.icon className="w-6 h-6 sm:w-8 sm:h-8" />
               </div>
 
               {/* Title & Description */}
               <h3 
-                className={`text-2xl font-bold mb-3 ${theme.textColor}`}
+                className={`text-xl sm:text-2xl font-bold mb-2 sm:mb-3 ${theme.textColor}`}
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
                 {role.title}
               </h3>
-              <p className={`${theme.textColor} opacity-80 mb-6`}>
+              <p className={`${theme.textColor} opacity-80 mb-4 sm:mb-6 text-sm sm:text-base`}>
                 {role.description}
               </p>
 

@@ -83,7 +83,7 @@ export function SearchBar({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`${theme.cardStyle} rounded-2xl px-6 py-4 flex items-center gap-4`}
+        className={`${theme.cardStyle} rounded-2xl px-4 py-3 sm:px-6 sm:py-4 flex items-center gap-3 sm:gap-4`}
       >
         <Search className="w-5 h-5 opacity-60" />
         <input

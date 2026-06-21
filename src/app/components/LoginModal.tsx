@@ -52,11 +52,11 @@ export function LoginModal({ isOpen, currentTheme, onClose, onLogin }: LoginModa
             exit={{ opacity: 0, scale: 0.9 }}
             className="fixed inset-0 flex items-center justify-center z-50 p-4"
           >
-            <div className={`${theme.cardStyle} rounded-3xl p-8 max-w-md w-full`}>
+            <div className={`${theme.cardStyle} rounded-3xl p-5 sm:p-8 max-w-md w-full`}>
               {/* Header */}
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
                 <h2
-                  className={`text-2xl font-bold ${theme.textColor}`}
+                  className={`text-xl sm:text-2xl font-bold ${theme.textColor}`}
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
                   Join Duneli
@@ -70,14 +70,14 @@ export function LoginModal({ isOpen, currentTheme, onClose, onLogin }: LoginModa
               </div>
 
               {/* Message */}
-              <p className={`${theme.textColor} opacity-70 mb-6`}>
+              <p className={`${theme.textColor} opacity-70 mb-4 sm:mb-6 text-sm sm:text-base`}>
                 Sign in to participate in discussions, vote on topics, and more.
               </p>
 
               {/* Google Login */}
               <button
                 onClick={handleGoogleLogin}
-                className={`w-full ${theme.buttonClass} px-6 py-4 rounded-2xl font-medium transition-all hover:scale-105 flex items-center justify-center gap-3`}
+                className={`w-full ${theme.buttonClass} px-6 py-3 sm:py-4 rounded-2xl font-medium transition-all hover:scale-105 flex items-center justify-center gap-3`}
               >
                 {/* Google icon */}
                 <svg className="w-5 h-5" viewBox="0 0 24 24">

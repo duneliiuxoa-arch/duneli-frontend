@@ -319,7 +319,7 @@ export default function App() {
       ) : (
         <>
           <HappeningNow discussions={discussions} currentTheme={currentTheme} isLoggedIn={user.isLoggedIn} onJoinDiscussion={handleJoinDiscussion} onLoginPrompt={handleLoginPrompt} />
-          <div className="max-w-7xl mx-auto px-8 py-12">
+          <div className="max-w-7xl mx-auto px-4 py-8 sm:px-8 sm:py-12">
             <SearchBar currentTheme={currentTheme} allDiscussions={discussions} selectedLanguage={selectedLanguage} isLoggedIn={user.isLoggedIn} onScheduleDiscussion={handleScheduleDiscussion} onLoginPrompt={handleLoginPrompt} />
             <div className="mt-8">
               <DiscoveryControls currentTheme={currentTheme} mode={discoveryMode} onModeChange={setDiscoveryMode} selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} selectedLanguage={selectedLanguage} onLanguageChange={setSelectedLanguage} sortBy={sortBy} onSortChange={setSortBy} />

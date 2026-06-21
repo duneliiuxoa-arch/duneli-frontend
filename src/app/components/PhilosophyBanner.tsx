@@ -33,19 +33,19 @@ export function PhilosophyBanner({ currentTheme }: PhilosophyBannerProps) {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-8 sm:px-8 sm:py-12">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`${theme.cardStyle} rounded-3xl p-8`}
+        className={`${theme.cardStyle} rounded-3xl p-5 sm:p-8`}
       >
         <h2 
-          className={`text-center text-2xl font-bold ${theme.textColor} opacity-90 mb-8`}
+          className={`text-center text-xl sm:text-2xl font-bold ${theme.textColor} opacity-90 mb-6 sm:mb-8`}
           style={{ fontFamily: 'var(--font-heading)' }}
         >
           How Duneli Works
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
           {howItWorks.map((item, index) => (
             <motion.div
               key={index}
@@ -54,11 +54,11 @@ export function PhilosophyBanner({ currentTheme }: PhilosophyBannerProps) {
               transition={{ delay: index * 0.1 }}
               className="text-center"
             >
-              <div className="text-4xl mb-3">{item.emoji}</div>
-              <h3 className={`font-semibold ${theme.textColor} mb-2`}>
+              <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">{item.emoji}</div>
+              <h3 className={`font-semibold text-sm sm:text-base ${theme.textColor} mb-1 sm:mb-2`}>
                 {item.title}
               </h3>
-              <p className={`text-sm ${theme.textColor} opacity-70`}>
+              <p className={`text-xs sm:text-sm ${theme.textColor} opacity-70`}>
                 {item.description}
               </p>
             </motion.div>

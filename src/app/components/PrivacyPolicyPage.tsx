@@ -112,18 +112,18 @@ export function PrivacyPolicyPage({ currentTheme, onBack }: Props) {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-16">
+      <div className="max-w-4xl mx-auto px-4 py-10 sm:px-6 sm:py-16">
         {/* ── Hero ── */}
-        <motion.div className="text-center mb-16"
+        <motion.div className="text-center mb-10 sm:mb-16"
           initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-6"
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl mb-5 sm:mb-6"
             style={{ background: 'linear-gradient(135deg, #6366f1, #06b6d4)', boxShadow: '0 0 40px rgba(99,102,241,0.3)' }}>
-            <Shield size={28} className="text-white" />
+            <Shield size={24} className="text-white" />
           </div>
-          <h1 className="text-4xl font-bold mb-4" style={{ fontFamily: 'var(--font-heading)' }}>
+          <h1 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4" style={{ fontFamily: 'var(--font-heading)' }}>
             Privacy Policy
           </h1>
-          <p className="text-lg opacity-60 max-w-xl mx-auto leading-relaxed">
+          <p className="text-sm sm:text-lg opacity-60 max-w-xl mx-auto leading-relaxed">
             We believe in transparency. Here's exactly what data we collect,
             why we collect it, and how we protect it.
           </p>
@@ -154,23 +154,23 @@ export function PrivacyPolicyPage({ currentTheme, onBack }: Props) {
         </motion.div>
 
         {/* ── Sections ── */}
-        <div className="space-y-8">
+        <div className="space-y-5 sm:space-y-8">
           {SECTIONS.map((section, i) => (
             <motion.div key={section.title}
-              className={`${theme.cardStyle} rounded-2xl p-8`}
+              className={`${theme.cardStyle} rounded-2xl p-5 sm:p-8`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + i * 0.07 }}>
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+              <div className="flex items-center gap-3 mb-4 sm:mb-5">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>
                   {section.icon}
                 </div>
-                <h2 className="text-lg font-bold">{section.title}</h2>
+                <h2 className="text-base sm:text-lg font-bold">{section.title}</h2>
               </div>
-              <ul className="space-y-3">
+              <ul className="space-y-2.5 sm:space-y-3">
                 {section.content.map((item, j) => (
-                  <li key={j} className="flex items-start gap-3 text-sm opacity-75 leading-relaxed">
+                  <li key={j} className="flex items-start gap-3 text-xs sm:text-sm opacity-75 leading-relaxed">
                     <span className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0"
                       style={{ background: '#6366f1' }} />
                     {item}

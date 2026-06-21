@@ -55,22 +55,22 @@ export function UpcomingDiscussions({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-8 sm:px-8 sm:py-12">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="flex items-center gap-3 mb-6">
-          <Calendar className={`w-6 h-6 ${theme.textColor}`} />
+        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <Calendar className={`w-5 h-5 sm:w-6 sm:h-6 ${theme.textColor}`} />
           <h2 
-            className={`text-3xl font-bold ${theme.textColor}`}
+            className={`text-xl sm:text-3xl font-bold ${theme.textColor}`}
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             Upcoming Discussions
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {upcomingDiscussions.map((discussion, index) => (
             <motion.div
               key={discussion.id}
