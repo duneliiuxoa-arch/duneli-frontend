@@ -1,0 +1,210 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ========================================
+    // HELPER FUNCTIONS
+    // ========================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isNotGuest() {
+      return isAuthenticated() && !request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isValidProvider() {
+      return request.auth.token.firebase.sign_in_provider in ['google.com', 'phone', 'anonymous'];
+    }
+    
+    // ========================================
+    // USERS COLLECTION
+    // ========================================
+    
+    match /users/{userId} {
+      // Anyone can read user profiles (for anonymous IDs)
+      allow read: if true;
+      
+      // Only authenticated non-guest users can create their own profile
+      allow create: if isOwner(userId) 
+        && isValidProvider()
+        && request.resource.data.provider in ['google', 'phone', 'guest']
+        && request.resource.data.keys().hasAll(['anonymousId', 'provider', 'createdAt', 'lastActiveAt']);
+      
+      // Only owner can update their own profile
+      allow update: if isOwner(userId)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['anonymousId', 'provider', 'createdAt']));
+      
+      // No deletions
+      allow delete: if false;
+    }
+    
+    // ========================================
+    // TOPICS COLLECTION
+    // ========================================
+    
+    match /topics/{topicId} {
+      // Anyone can read topics (including guests)
+      allow read: if true;
+      
+      // Only authenticated NON-GUEST users can create topics
+      allow create: if isAuthenticated()
+        && isNotGuest()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status in ['live', 'upcoming', 'ended']
+        && request.resource.data.interestCount == 0
+        && request.resource.data.keys().hasAll(['title', 'category', 'createdBy', 'createdAt', 'status', 'interestCount']);
+      
+      // Only creator can update topic (non-guests only)
+      allow update: if isAuthenticated() 
+        && isNotGuest()
+        && resource.data.createdBy == request.auth.uid
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'createdAt']));
+      
+      // No deletions
+      allow delete: if false;
+    }
+    
+    // ========================================
+    // DISCUSSIONS COLLECTION
+    // ========================================
+    
+    match /discussions/{discussionId} {
+      // Anyone can read discussions
+      allow read: if true;
+      
+      // Only authenticated NON-GUEST users can create discussions
+      allow create: if isAuthenticated()
+        && isNotGuest()
+        && request.resource.data.status == 'live'
+        && request.resource.data.keys().hasAll(['topicId', 'startedAt', 'agoraChannelName', 'status']);
+      
+      // Only allow status updates to 'ended' by authenticated non-guests
+      allow update: if isAuthenticated()
+        && isNotGuest()
+        && request.resource.data.status == 'ended'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt']);
+      
+      // No deletions
+      allow delete: if false;
+    }
+    
+    // ========================================
+    // PARTICIPANTS COLLECTION
+    // ========================================
+    
+    match /participants/{participantId} {
+      // Anyone can read participants
+      allow read: if true;
+      
+      // Only authenticated NON-GUEST users can create participant record for themselves
+      allow create: if isAuthenticated() 
+        && isNotGuest()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.role in ['listener', 'speaker', 'debater']
+        && request.resource.data.keys().hasAll(['discussionId', 'userId', 'role', 'joinedAt']);
+      
+      // No updates allowed
+      allow update: if false;
+      
+      // Only owner can delete their own participant record
+      allow delete: if isAuthenticated() 
+        && isNotGuest()
+        && resource.data.userId == request.auth.uid;
+    }
+    
+    // ========================================
+    // SPEAKING QUEUE COLLECTION
+    // ========================================
+    
+    match /speakingQueue/{queueId} {
+      // Anyone can read queue
+      allow read: if true;
+      
+      // Only authenticated NON-GUEST users can add themselves to queue
+      allow create: if isAuthenticated() 
+        && isNotGuest()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.keys().hasAll(['discussionId', 'userId', 'requestedAt', 'status']);
+      
+      // Allow status updates (for speaker timing)
+      // User can update their own entry, or Cloud Functions can update any
+      allow update: if (isAuthenticated() && isNotGuest() && resource.data.userId == request.auth.uid)
+        || (isAuthenticated() && request.resource.data.status in ['waiting', 'speaking', 'done']);
+      
+      // Only owner can delete their own queue entry
+      allow delete: if (isAuthenticated() && isNotGuest() && resource.data.userId == request.auth.uid)
+        || isAuthenticated(); // Allow Cloud Functions to delete
+    }
+    
+    // ========================================
+    // SPEAKER TIMERS COLLECTION
+    // ========================================
+    
+    match /speakerTimers/{timerId} {
+      // Anyone can read timers
+      allow read: if true;
+      
+      // Only authenticated NON-GUEST users can create (via Cloud Function)
+      allow create: if isAuthenticated() 
+        && isNotGuest()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasAll(['queueId', 'discussionId', 'userId', 'startedAt', 'expiresAt', 'status']);
+      
+      // Cloud Functions can update/delete (authenticated service account)
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ========================================
+    // REACTIONS COLLECTION
+    // ========================================
+    
+    match /reactions/{reactionId} {
+      // Anyone can read reactions
+      allow read: if true;
+      
+      // Only authenticated NON-GUEST users can create reactions for themselves
+      allow create: if isAuthenticated() 
+        && isNotGuest()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.type in ['agree', 'disagree']
+        && request.resource.data.keys().hasAll(['discussionId', 'userId', 'type', 'createdAt']);
+      
+      // No updates allowed
+      allow update: if false;
+      
+      // Only owner can delete their own reactions
+      allow delete: if isAuthenticated() 
+        && isNotGuest()
+        && resource.data.userId == request.auth.uid;
+    }
+    
+    // ========================================
+    // ACTIVITY LOGS COLLECTION
+    // ========================================
+    
+    match /activityLogs/{logId} {
+      // Anyone can read activity logs
+      allow read: if true;
+      
+      // Only authenticated NON-GUEST users can create logs for themselves
+      allow create: if isAuthenticated() 
+        && isNotGuest()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.type in ['joined', 'reacted', 'spoke', 'left', 'expressed_interest']
+        && request.resource.data.keys().hasAll(['userId', 'type', 'timestamp']);
+      
+      // No updates or deletes
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
