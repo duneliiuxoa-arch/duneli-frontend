@@ -1,4 +1,4 @@
-// Authentication Hook — Supabase (replaces Firebase version)
+// Authentication Hook — Supabase
 import { useState, useEffect } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import {
@@ -13,46 +13,36 @@ export const useAuth = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [anonymousId, setAnonymousId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isGuest, setIsGuest] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     const initAuth = async () => {
-      // Handle OAuth redirect result on first load
+      // Handle OAuth redirect result — anonymous users are filtered out inside
       try {
         await checkRedirectResult();
       } catch (error) {
         console.error('Error checking redirect result:', error);
       }
 
-      // Subscribe to auth state changes
       const unsubscribe = onAuthChange(async (authUser, authSession) => {
         if (!isMounted) return;
 
+        // authUser is always null for anonymous sessions (filtered in onAuthChange)
         setUser(authUser);
         setSession(authSession);
 
-        if (authUser) {
+        if (authUser && !isGuestUser(authUser)) {
           try {
             const anonId = await getUserAnonymousId(authUser.id);
-            if (isMounted) {
-              setAnonymousId(anonId);
-              setIsGuest(isGuestUser(authUser));
-            }
+            if (isMounted) setAnonymousId(anonId);
           } catch (error) {
             console.error('Error fetching user data:', error);
-            if (isMounted) {
-              setAnonymousId(null);
-              setIsGuest(false);
-            }
+            if (isMounted) setAnonymousId(null);
           }
         } else {
-          if (isMounted) {
-            setAnonymousId(null);
-            setIsGuest(false);
-          }
+          if (isMounted) setAnonymousId(null);
         }
 
         if (isMounted) {
@@ -68,9 +58,7 @@ export const useAuth = () => {
 
     return () => {
       isMounted = false;
-      unsubscribePromise.then((unsubscribe) => {
-        if (unsubscribe) unsubscribe();
-      });
+      unsubscribePromise.then(unsub => { if (unsub) unsub(); });
     };
   }, []);
 
@@ -79,7 +67,7 @@ export const useAuth = () => {
     session,
     anonymousId,
     loading,
-    isGuest,
+    isGuest: false,           // Guest login disabled — always false
     isAuthenticated: !!user && !isGuestUser(user),
     initialized,
   };

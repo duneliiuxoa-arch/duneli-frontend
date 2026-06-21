@@ -20,7 +20,7 @@ import { themes } from './config/themes';
 import { onAuthChange, checkRedirectResult } from '../services/authService';
 import { fetchDiscussions, createTopic, voteTopic, joinMeeting, leaveMeeting } from '../services/discussionService';
 
-// ── Blank guest user ──────────────────────────────────────────
+// ── Not-logged-in placeholder ─────────────────────────────────
 const GUEST_USER: User = { id: 'guest', name: 'Guest', avatar: '', isLoggedIn: false };
 
 // ── Map backend topic → frontend Discussion ───────────────────
@@ -66,7 +66,6 @@ function persistPage(page: Page) {
 }
 
 export default function App() {
-  // ── Page state ─────────────────────────────────────────────
   const [currentPage, setCurrentPageRaw] = useState<Page>(getPersistedPage);
   const [selectedDiscussion, setSelectedDiscussion] = useState<Discussion | null>(null);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -76,7 +75,6 @@ export default function App() {
     setCurrentPageRaw(page);
   }, []);
 
-  // ── Theme ──────────────────────────────────────────────────
   const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
     try { return (localStorage.getItem('duneli_theme') as Theme) || 'dream'; } catch { return 'dream'; }
   });
@@ -86,26 +84,21 @@ export default function App() {
     setCurrentTheme(t);
   }, []);
 
-  // ── User ───────────────────────────────────────────────────
+  // ── User — starts as guest (not logged in) ────────────────
   const [user, setUser] = useState<User>(GUEST_USER);
 
-  // ── Data ───────────────────────────────────────────────────
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // ── Discovery ──────────────────────────────────────────────
   const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>('interest');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [selectedLanguage, setSelectedLanguage] = useState<Language | 'All'>('All');
   const [sortBy, setSortBy] = useState<SortOption>('trending');
-
-  // ── Modal ──────────────────────────────────────────────────
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   const theme = themes[currentTheme];
 
-  // ── Load discussions from real API ─────────────────────────
   const loadDiscussions = useCallback(async () => {
     setLoading(true);
     try {
@@ -118,10 +111,12 @@ export default function App() {
     }
   }, []);
 
-  // ── Auth init + listener ───────────────────────────────────
+  // ── Auth init ─────────────────────────────────────────────
   useEffect(() => {
+    // On first load, check if there's a real Google session from OAuth redirect
     checkRedirectResult().then(supabaseUser => {
       if (supabaseUser) {
+        // Real Google user — log them in
         setUser({
           id:         supabaseUser.id,
           name:       supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'User',
@@ -130,19 +125,24 @@ export default function App() {
         });
         setCurrentPage('homepage');
       }
+      // If null → no session or anonymous → stay on entry/homepage as guest
     });
 
+    // Listen for auth state changes
+    // onAuthChange already filters out anonymous users — only real Google users reach here
     const unsubscribe = onAuthChange((supabaseUser) => {
       if (supabaseUser) {
+        // Real authenticated Google user
         setUser({
           id:         supabaseUser.id,
           name:       supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'User',
           avatar:     supabaseUser.user_metadata?.avatar_url || '',
-          isLoggedIn: !supabaseUser.is_anonymous,
+          isLoggedIn: true,
         });
-        // only redirect to homepage if currently on entry screen
+        // If they were on entry screen, send to homepage
         setCurrentPageRaw(prev => prev === 'entry' ? 'homepage' : prev);
       } else {
+        // Logged out (or anonymous session — treated same as not logged in)
         setUser(GUEST_USER);
       }
     });
@@ -174,7 +174,7 @@ export default function App() {
     setCurrentPage('homepage');
   }, []);
 
-  const handleNavigate        = useCallback((page: Page) => setCurrentPage(page), []);
+  const handleNavigate = useCallback((page: Page) => setCurrentPage(page), []);
 
   const handleShowInterest = useCallback(async (discussionId: string) => {
     setDiscussions(prev => prev.map(d =>
@@ -221,20 +221,25 @@ export default function App() {
   const handleSelectRole = useCallback((role: Role) => {
     setSelectedRole(role);
     setCurrentPage('meeting');
-    // Record attendee in DB
     if (selectedDiscussion) joinMeeting(selectedDiscussion.id).catch(console.error);
   }, [selectedDiscussion]);
 
   const handleLeaveMeeting = useCallback(() => {
     setCurrentPage('leaving');
-    // Record leftAt in DB
     if (selectedDiscussion) leaveMeeting(selectedDiscussion.id).catch(console.error);
   }, [selectedDiscussion]);
-  const handleReturnHome          = useCallback(() => { setCurrentPage('homepage'); setSelectedDiscussion(null); setSelectedRole(null); loadDiscussions(); }, [loadDiscussions]);
+
+  const handleReturnHome = useCallback(() => {
+    setCurrentPage('homepage');
+    setSelectedDiscussion(null);
+    setSelectedRole(null);
+    loadDiscussions();
+  }, [loadDiscussions]);
+
   const handleBackFromRoleSelection = useCallback(() => { setCurrentPage('homepage'); setSelectedDiscussion(null); }, []);
-  const handleMarkAsRead          = useCallback((id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n)), []);
-  const handleMarkAllAsRead       = useCallback(() => setNotifications(prev => prev.map(n => ({ ...n, read: true }))), []);
-  const handleLoginPrompt         = useCallback(() => setShowLoginModal(true), []);
+  const handleMarkAsRead            = useCallback((id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n)), []);
+  const handleMarkAllAsRead         = useCallback(() => setNotifications(prev => prev.map(n => ({ ...n, read: true }))), []);
+  const handleLoginPrompt           = useCallback(() => setShowLoginModal(true), []);
 
   // ── Filtered + sorted discussions ─────────────────────────
   const filteredDiscussions = useMemo(() => {
@@ -257,7 +262,6 @@ export default function App() {
     return filtered;
   }, [discussions, discoveryMode, selectedCategory, selectedLanguage, sortBy]);
 
-  // ── Saved discussions (client-side for now) ───────────────
   const savedDiscussions = discussions
     .filter(d => d.hasUserSaved)
     .map(d => ({ id: d.id, title: d.title, status: d.status, interestCount: d.interestCount }));
@@ -298,10 +302,9 @@ export default function App() {
 
   // ── Homepage ───────────────────────────────────────────────
   return (
-    <div
-      className={`min-h-screen transition-all duration-700 ${theme.textColor}`}
-      style={{ background: theme.background, fontFamily: 'var(--font-body)' }}
-    >
+    <div className={`min-h-screen transition-all duration-700 ${theme.textColor}`}
+      style={{ background: theme.background, fontFamily: 'var(--font-body)' }}>
+
       <Header
         user={user}
         currentTheme={currentTheme}
@@ -330,13 +333,11 @@ export default function App() {
 
       <PhilosophyBanner currentTheme={currentTheme} />
 
-      {/* ── Footer ── */}
       <footer className="text-center py-8 px-6" style={{ opacity: 0.45, fontSize: 13 }}>
         <div className={`${theme.textColor} flex items-center justify-center gap-4 flex-wrap`}>
           <span>© 2026 Duneli · IUXOA</span>
           <span>·</span>
-          <button
-            onClick={() => setCurrentPage('privacy')}
+          <button onClick={() => setCurrentPage('privacy')}
             className="underline underline-offset-2 hover:opacity-80 transition-opacity">
             Privacy Policy
           </button>

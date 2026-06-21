@@ -1,4 +1,4 @@
-// Authentication Service — Supabase (replaces Firebase auth)
+// Authentication Service — Supabase
 import { supabase } from '../lib/supabase';
 import type { User, Session, AuthError } from '@supabase/supabase-js';
 
@@ -11,9 +11,10 @@ const generateAnonymousId = (): string => {
 };
 
 // ─── Create or update public.users row after auth ────────────────────────────
-// The handle_new_user trigger in Supabase handles this automatically on INSERT.
-// This function is a fallback for manual upserts if needed.
 const upsertUserProfile = async (user: User): Promise<void> => {
+  // Never upsert anonymous/guest users into the users table
+  if (user.is_anonymous === true) return;
+
   const { error } = await supabase.from('users').upsert(
     {
       id: user.id,
@@ -34,7 +35,7 @@ const upsertUserProfile = async (user: User): Promise<void> => {
   }
 };
 
-// ─── Sign in with Google ──────────────────────────────────────────────────────
+// ─── Sign in with Google (only supported login method) ───────────────────────
 export const signInWithGoogle = async (): Promise<void> => {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
@@ -51,7 +52,6 @@ export const signInWithGoogle = async (): Promise<void> => {
     console.error('Google sign-in error:', error.message);
     throw error;
   }
-  // Supabase redirects the browser — no return value needed
 };
 
 // ─── Check for OAuth redirect result (call on app init) ──────────────────────
@@ -63,12 +63,13 @@ export const checkRedirectResult = async (): Promise<User | null> => {
     return null;
   }
 
-  if (data.session?.user) {
-    await upsertUserProfile(data.session.user);
-    return data.session.user;
-  }
+  const sessionUser = data.session?.user;
 
-  return null;
+  // Reject anonymous/guest sessions — only real Google users pass through
+  if (!sessionUser || sessionUser.is_anonymous === true) return null;
+
+  await upsertUserProfile(sessionUser);
+  return sessionUser;
 };
 
 // ─── Sign out ─────────────────────────────────────────────────────────────────
@@ -85,11 +86,21 @@ export const logout = async (): Promise<void> => {
 };
 
 // ─── Auth state listener ──────────────────────────────────────────────────────
+// Only fires callback for real (non-anonymous) users.
+// Anonymous sessions are silently ignored so the app stays on the EntryScreen.
 export const onAuthChange = (
   callback: (user: User | null, session: Session | null) => void
 ): (() => void) => {
   const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-    callback(session?.user ?? null, session ?? null);
+    const user = session?.user ?? null;
+
+    // Block anonymous users — treat them as "not logged in"
+    if (user?.is_anonymous === true) {
+      callback(null, null);
+      return;
+    }
+
+    callback(user, session ?? null);
   });
 
   return () => listener.subscription.unsubscribe();
@@ -104,11 +115,10 @@ export const getUserAnonymousId = async (userId: string): Promise<string | null>
     .single();
 
   if (error) {
-    // Row might not exist yet — create one with a new anonymousId
     if (error.code === 'PGRST116') {
       const { data: session } = await supabase.auth.getSession();
       const user = session?.session?.user;
-      if (!user) return null;
+      if (!user || user.is_anonymous === true) return null;
 
       const newAnonId = generateAnonymousId();
       await supabase.from('users').upsert({
@@ -144,50 +154,15 @@ export const getUserProfile = async (userId: string) => {
   return data;
 };
 
-// ─── Guest: anonymous session via Supabase ────────────────────────────────────
-// NOTE: Supabase does not have built-in anonymous auth like Firebase.
-// We create a temporary in-memory guest marker instead.
-// If you enable Supabase anonymous sign-in (Auth > Settings), swap this.
-export const continueAsGuest = async (): Promise<User> => {
-  const { data, error } = await supabase.auth.signInAnonymously();
-
-  if (error || !data.user) {
-    console.error('Guest sign-in error:', error?.message);
-    throw error ?? new Error('Anonymous sign-in failed');
-  }
-
-  return data.user;
-};
-
 // ─── Check if user is a guest (anonymous) ────────────────────────────────────
 export const isGuestUser = (user: User | null): boolean => {
   if (!user) return false;
-  // Supabase anonymous users have is_anonymous = true in user metadata
   return user.is_anonymous === true;
 };
 
-// ─── Phone auth (Supabase OTP) ────────────────────────────────────────────────
-export const signInWithPhone = async (phone: string): Promise<void> => {
-  const { error } = await supabase.auth.signInWithOtp({ phone });
-
-  if (error) {
-    console.error('Phone OTP send error:', error.message);
-    throw error;
-  }
-};
-
-export const verifyPhoneCode = async (phone: string, token: string): Promise<User> => {
-  const { data, error } = await supabase.auth.verifyOtp({
-    phone,
-    token,
-    type: 'sms',
-  });
-
-  if (error || !data.user) {
-    console.error('Phone OTP verify error:', error?.message);
-    throw error ?? new Error('OTP verification failed');
-  }
-
-  await upsertUserProfile(data.user);
-  return data.user;
+// ─── continueAsGuest — DISABLED ──────────────────────────────────────────────
+// Guest login is not supported. Only Google sign-in is allowed.
+// This function is kept as a stub to avoid import errors elsewhere.
+export const continueAsGuest = async (): Promise<never> => {
+  throw new Error('Guest login is disabled. Please sign in with Google.');
 };
