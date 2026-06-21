@@ -100,13 +100,6 @@ export function LoginModal({ isOpen, currentTheme, onClose, onLogin }: LoginModa
                 </svg>
                 <span>Continue with Google</span>
               </button>
-
-              <button
-                onClick={onClose}
-                className={`w-full mt-4 px-6 py-3 text-sm ${theme.textColor} opacity-60 hover:opacity-100 transition-opacity`}
-              >
-                Continue browsing as guest
-              </button>
             </div>
           </motion.div>
         </>

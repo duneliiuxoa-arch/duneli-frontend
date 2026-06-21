@@ -1,14 +1,12 @@
-import { LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useState } from 'react';
-import { signInWithGoogle, continueAsGuest } from '../../services/authService';
+import { signInWithGoogle } from '../../services/authService';
 
 interface EntryScreenProps {
   onLogin: () => void;
-  onContinueAsGuest: () => void;
 }
 
-export function EntryScreen({ onLogin, onContinueAsGuest }: EntryScreenProps) {
+export function EntryScreen({ onLogin }: EntryScreenProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,19 +18,6 @@ export function EntryScreen({ onLogin, onContinueAsGuest }: EntryScreenProps) {
       // Supabase redirects browser — onLogin() fires via auth listener after redirect
     } catch (err: any) {
       setError(err.message || 'Google login failed');
-      setLoading(false);
-    }
-  };
-
-  const handleGuest = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await continueAsGuest();
-      onContinueAsGuest();
-    } catch (err: any) {
-      setError(err.message || 'Guest login failed');
-    } finally {
       setLoading(false);
     }
   };
@@ -94,43 +79,14 @@ export function EntryScreen({ onLogin, onContinueAsGuest }: EntryScreenProps) {
                 <span className="font-medium">{loading ? 'Redirecting…' : 'Login with Google'}</span>
               </button>
 
-              {/* Mobile OTP — placeholder, wire up phone auth later */}
-              <button
-                disabled={loading}
-                onClick={onLogin}
-                className="w-full bg-white hover:bg-gray-50 text-gray-900 px-6 py-4 rounded-2xl transition-all hover:scale-105 flex items-center justify-center gap-3 shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <LogIn className="w-5 h-5" />
-                <span className="font-medium">Login with Mobile Number (OTP)</span>
-              </button>
-
               {/* Error */}
               {error && (
                 <p className="text-red-600 text-sm text-center">{error}</p>
               )}
-
-              {/* Divider */}
-              <div className="relative py-2">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-900/10"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-white/30 text-gray-700">or</span>
-                </div>
-              </div>
-
-              {/* Guest Continue */}
-              <button
-                onClick={handleGuest}
-                disabled={loading}
-                className="w-full bg-gray-900/10 hover:bg-gray-900/20 text-gray-900 px-6 py-4 rounded-2xl transition-all hover:scale-105 font-medium disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                Continue as Guest
-              </button>
             </div>
 
           <p className="text-xs text-center opacity-60 mt-6">
-            Guests can browse discussions but cannot participate
+            Sign in with Google to participate in discussions
           </p>
         </motion.div>
       </motion.div>

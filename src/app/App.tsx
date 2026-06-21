@@ -174,7 +174,6 @@ export default function App() {
     setCurrentPage('homepage');
   }, []);
 
-  const handleContinueAsGuest = useCallback(() => setCurrentPage('homepage'), []);
   const handleNavigate        = useCallback((page: Page) => setCurrentPage(page), []);
 
   const handleShowInterest = useCallback(async (discussionId: string) => {
@@ -265,7 +264,7 @@ export default function App() {
 
   // ── Page renders ───────────────────────────────────────────
   if (currentPage === 'entry')
-    return <EntryScreen onLogin={handleLogin} onContinueAsGuest={handleContinueAsGuest} />;
+    return <EntryScreen onLogin={handleLogin} />;
 
   if (currentPage === 'myActivity')
     return <MyActivityPage currentTheme={currentTheme} onBack={() => setCurrentPage('homepage')} />;
