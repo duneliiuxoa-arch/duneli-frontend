@@ -277,7 +277,8 @@ export function MeetingPage({
           // Hand raise broadcast
           .on('broadcast', { event: 'hand_raise' }, ({ payload }: any) => {
             setParticipants(prev => prev.map(p =>
-              p.id === payload.userId
+              // agoraUid ya userId dono se match karo
+              p.id === payload.agoraUid || p.id === payload.userId
                 ? { ...p, handRaised: payload.raised, name: payload.name }
                 : p
             ));
@@ -530,17 +531,23 @@ export function MeetingPage({
                 onClick={() => {
                   const next = !handRaised;
                   setHandRaised(next);
-                  // Broadcast to all participants via Supabase Realtime
                   if (realtimeRef.current && currentUserId) {
                     realtimeRef.current.send({
                       type: 'broadcast',
                       event: 'hand_raise',
-                      payload: { userId: currentUserId, name: userName, raised: next },
+                      payload: {
+                        userId: currentUserId,
+                        agoraUid: String(toAgoraUid(currentUserId)),
+                        name: userName,
+                        raised: next,
+                      },
                     });
                   }
-                  // Also update own participant card
+                  // Apna card bhi update karo
                   setParticipants(prev => prev.map(p =>
-                    p.id === currentUserId ? { ...p, handRaised: next } : p
+                    p.id === String(toAgoraUid(currentUserId || '')) || p.id === currentUserId
+                      ? { ...p, handRaised: next }
+                      : p
                   ));
                 }}
                 className={`p-3 rounded-full transition-all ${
