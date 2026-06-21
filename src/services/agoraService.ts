@@ -37,6 +37,7 @@ export const getAgoraToken = async (
       if (res.status === 401) throw new Error('You must be signed in to join audio');
       if (res.status === 403) throw new Error('You do not have permission to join this discussion');
       if (res.status === 404) throw new Error('Discussion not found or not active');
+      if (res.status === 500) throw new Error('Audio server error — AGORA_APP_CERTIFICATE not set on server.');
       throw new Error(msg || 'Failed to generate audio token. Please try again.');
     }
 
