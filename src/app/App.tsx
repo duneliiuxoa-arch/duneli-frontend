@@ -55,7 +55,7 @@ function getPersistedPage(): Page {
     const saved = sessionStorage.getItem('duneli_page') as Page | null;
     if (saved && SAFE_PAGES.includes(saved)) return saved;
   } catch {}
-  return 'entry';
+  return 'homepage';
 }
 
 function persistPage(page: Page) {
