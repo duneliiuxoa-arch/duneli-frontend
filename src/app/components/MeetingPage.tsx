@@ -1,14 +1,15 @@
-import { Radio, Users, Clock, Hand, ThumbsUp, ThumbsDown, Mic, MicOff, LogOut, Volume2, Headphones, Send, MessageSquare, X } from 'lucide-react';
+import { Radio, Users, Clock, Hand, Mic, MicOff, LogOut, Volume2, Headphones, Send, MessageSquare, X } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Theme, Role, Discussion, Participant, HandRaiseRequest, Idea } from '../types';
+import { Theme, Role, Discussion, Participant, Idea } from '../types';
 import { themes } from '../config/themes';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   joinAgoraChannel,
   leaveAgoraChannel,
   toggleMicrophone,
+  getAgoraClient,
 } from '../../services/agoraService';
-import { getAgoraClient } from '../../services/agoraService';
+import { transcriptionService } from '../../services/transcriptionService';
 import { supabase } from '../../lib/supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -45,6 +46,13 @@ export function MeetingPage({
   const [micMuted, setMicMuted] = useState(true);
   const [handRaised, setHandRaised] = useState(false);
   const [speakerTimeLeft, setSpeakerTimeLeft] = useState<number | null>(null);
+
+  // ── Transcription state ────────────────────────────────────
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const meetingIdRef = useRef<string>('');
+  const userIdRef    = useRef<string>('');
+  const anonIdRef    = useRef<string>('');
 
   // ── Agora ─────────────────────────────────────────────────
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -157,6 +165,13 @@ export function MeetingPage({
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const userId = session?.user?.id || 'guest-' + Date.now();
+        const anonId = session?.user?.user_metadata?.anonymousId || userId.slice(0, 8);
+
+        // Store refs for transcription
+        meetingIdRef.current = discussion.meetingId || discussion.id;
+        userIdRef.current    = userId;
+        anonIdRef.current    = anonId;
+
         await joinAgoraChannel(discussion.id, userId, userRole);
         if (cancelled) return;
         setAgoraJoined(true);
@@ -205,6 +220,10 @@ export function MeetingPage({
     join();
     return () => {
       cancelled = true;
+      // Stop transcription on leave
+      if (transcriptionService.getIsRunning()) {
+        transcriptionService.stop().catch(() => {});
+      }
       leaveAgoraChannel().catch(() => {});
       if (realtimeRef.current) { supabase.removeChannel(realtimeRef.current); realtimeRef.current = null; }
     };
@@ -220,9 +239,11 @@ export function MeetingPage({
 
   const handleMicToggle = async () => {
     try {
-      const next = !micMuted;
+      const next = !micMuted; // next = true means unmuting
       await toggleMicrophone(!next);
       setMicMuted(next);
+
+      // Speaker timer
       if (userRole === 'speaker' && !next) {
         setSpeakerTimeLeft(180);
         speakerTimerRef.current = setInterval(() => {
@@ -231,6 +252,8 @@ export function MeetingPage({
               clearInterval(speakerTimerRef.current!);
               toggleMicrophone(false).catch(() => {});
               setMicMuted(true);
+              // Stop transcription when time is up
+              transcriptionService.stop().then(() => setIsTranscribing(false));
               return null;
             }
             return prev - 1;
@@ -240,7 +263,37 @@ export function MeetingPage({
         clearInterval(speakerTimerRef.current);
         setSpeakerTimeLeft(null);
       }
-    } catch (err: any) { console.error('Mic toggle error:', err); }
+
+      // ── Transcription start/stop ───────────────────────────
+      if (!next && (userRole === 'speaker' || userRole === 'debater')) {
+        // Unmuted → start transcription
+        const meetingId = meetingIdRef.current;
+        const userId    = userIdRef.current;
+        const anonId    = anonIdRef.current;
+
+        if (meetingId && !isTranscribing) {
+          transcriptionService.start(
+            meetingId, userId, anonId,
+            (segment) => {
+              if (segment.isFinal) {
+                setLiveTranscript('');
+              } else {
+                setLiveTranscript(segment.text);
+              }
+            }
+          ).then(() => setIsTranscribing(true))
+           .catch(err => console.error('[transcription] Start failed:', err));
+        }
+      } else if (next && isTranscribing) {
+        // Muted → stop transcription
+        transcriptionService.stop().then(() => {
+          setIsTranscribing(false);
+          setLiveTranscript('');
+        });
+      }
+    } catch (err: any) {
+      console.error('Mic toggle error:', err);
+    }
   };
 
   const currentSpeaker = participants.find(p => p.isSpeaking);
@@ -301,6 +354,21 @@ export function MeetingPage({
               {participants.filter(p => (p as any).handRaised).map(p => (
                 <span key={p.id} className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300">{p.name}</span>
               ))}
+            </div>
+          )}
+
+          {/* Live transcript banner */}
+          {liveTranscript && (
+            <div className={`mx-4 mt-2 px-3 py-2 rounded-xl text-xs italic ${isDark ? 'bg-purple-500/15 border border-purple-500/30 text-purple-300' : 'bg-purple-50 border border-purple-200 text-purple-700'}`}>
+              🎙️ <span className="font-semibold">Live:</span> {liveTranscript}
+            </div>
+          )}
+
+          {/* Transcription indicator */}
+          {isTranscribing && (
+            <div className="mx-4 mt-1 flex items-center gap-1.5 text-xs text-green-400">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              Transcribing audio...
             </div>
           )}
 
