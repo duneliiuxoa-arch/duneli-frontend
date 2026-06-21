@@ -6,7 +6,7 @@ import AgoraRTC, {
 } from 'agora-rtc-sdk-ng';
 
 // Agora App Credentials (from spec)
-export const AGORA_APP_ID = '649581f9f2664ca5b6e54ed70bc371b5';
+export const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'e582fb72e35e456b93f8d2431bd0ac24';
 
 // Initialize Agora client
 export const createAgoraClient = (): IAgoraRTCClient => {
