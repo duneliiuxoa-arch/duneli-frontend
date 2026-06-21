@@ -8,6 +8,7 @@ import {
   leaveAgoraChannel,
   toggleMicrophone,
   getAgoraClient,
+  toAgoraUid,
 } from '../../services/agoraService';
 import { transcriptionService } from '../../services/transcriptionService';
 import { supabase } from '../../lib/supabase';
@@ -197,6 +198,7 @@ export function MeetingPage({
           client.on('user-joined', (user) => {
             setParticipants(prev => {
               if (prev.find(p => p.id === String(user.uid))) return prev;
+              // Role baad mein Supabase Presence se update hoga
               return [...prev, { id: String(user.uid), name: `User-${String(user.uid)}`, role: 'listener' as Role, isSpeaking: false }];
             });
           });
@@ -221,23 +223,25 @@ export function MeetingPage({
         });
 
         channel
-          // Presence — real-time participant list with names
+          // Presence — real-time participant list with names + roles
           .on('presence', { event: 'sync' }, () => {
-            const state = channel.presenceState<{ name: string; role: string }>();
-            Object.entries(state).forEach(([presenceKey, presences]) => {
-              const p = (presences as any[])[0];
+            const state = channel.presenceState<{ name: string; role: string; agoraUid: string; userId: string }>();
+            Object.values(state).forEach((presences: any[]) => {
+              const p = presences[0];
               if (!p) return;
+              // agoraUid se participant match karo
               setParticipants(prev => prev.map(participant =>
-                participant.id === presenceKey
+                participant.id === p.agoraUid || participant.id === p.userId
                   ? { ...participant, name: p.name, role: p.role as Role }
                   : participant
               ));
             });
           })
-          .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
+          .on('presence', { event: 'join' }, ({ newPresences }: any) => {
             const p = newPresences[0];
+            if (!p) return;
             setParticipants(prev => prev.map(participant =>
-              participant.id === key
+              participant.id === p.agoraUid || participant.id === p.userId
                 ? { ...participant, name: p.name, role: p.role as Role }
                 : participant
             ));
@@ -252,8 +256,13 @@ export function MeetingPage({
           })
           .subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
-              // Apna presence track karo with name + role
-              await channel.track({ name: userName, role: userRole });
+              // Apna presence track karo — agoraUid bhi include karo for mapping
+              await channel.track({
+                name: userName,
+                role: userRole,
+                agoraUid: String(toAgoraUid(userId)),
+                userId,
+              });
             }
           });
 

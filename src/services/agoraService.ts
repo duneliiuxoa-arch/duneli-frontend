@@ -19,9 +19,8 @@ interface AgoraTokenResponse {
 // Get Agora token from Duneli backend API (SECURE - SERVER SIDE ONLY)
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-// Helper: Supabase UUID → consistent numeric Agora UID
-// Agora requires numeric UID; we hash the UUID to a stable number
-const toAgoraUid = (userId: string): number => {
+// Helper: Supabase UUID → consistent numeric Agora UID (exported for MeetingPage)
+export const toAgoraUid = (userId: string): number => {
   let hash = 0;
   for (let i = 0; i < userId.length; i++) {
     hash = ((hash << 5) - hash) + userId.charCodeAt(i);
