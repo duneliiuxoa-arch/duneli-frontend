@@ -543,23 +543,24 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     <div className={`min-h-screen ${theme.textColor} flex flex-col`} style={{ background: theme.background, fontFamily: 'var(--font-body)' }}>
 
       {/* ── Top Bar ── */}
-      <div className={`${theme.cardStyle} px-6 py-4 border-b ${borderCls}`}>
-        <div className="flex items-center justify-between gap-4 w-full">
+      <div className={`${theme.cardStyle} px-4 py-3 border-b ${borderCls}`}>
+        <div className="flex items-center justify-between gap-3 w-full">
           {/* Live badge + topic */}
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-full font-medium flex-shrink-0 text-sm">
+          <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 bg-red-500 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-full font-medium flex-shrink-0 text-xs sm:text-sm">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
               </span>
-              <Radio className="w-4 h-4" />
+              <Radio className="w-3 h-3 sm:w-4 sm:h-4" />
               LIVE
             </div>
-            <h1 className={`font-semibold truncate ${theme.textColor}`}>{discussion.title}</h1>
+            <h1 className={`font-semibold truncate text-sm sm:text-base ${theme.textColor}`}>{discussion.title}</h1>
           </div>
 
-          {/* Stats only — Leave is in bottom bar */}
-          <div className={`hidden sm:flex items-center gap-6 ${theme.textColor} opacity-70`}>
+          {/* Desktop: stats | Mobile: Leave button here so it's always visible */}
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+            <div className={`hidden sm:flex items-center gap-6 ${theme.textColor} opacity-70`}>
               <div className="flex items-center gap-2 text-sm">
                 <Clock className="w-4 h-4" />
                 <span>{formatTime(elapsedTime)}</span>
@@ -568,6 +569,13 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                 <Users className="w-4 h-4" />
                 <span>{participants.length} in room</span>
               </div>
+            </div>
+            {/* Leave — only in top bar on mobile */}
+            <button onClick={onLeave}
+              className="md:hidden flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/20 text-red-400 font-medium text-sm active:bg-red-500 active:text-white transition-all">
+              <LogOut className="w-4 h-4" />
+              <span className="text-xs font-semibold">Leave</span>
+            </button>
           </div>
         </div>
       </div>
