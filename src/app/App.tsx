@@ -19,6 +19,7 @@ import { Discussion, User, Notification, Theme, DiscoveryMode, Category, SortOpt
 import { themes } from './config/themes';
 import { onAuthChange, checkRedirectResult } from '../services/authService';
 import { fetchDiscussions, createTopic, voteTopic, joinMeeting, leaveMeeting } from '../services/discussionService';
+import { supabase } from '../lib/supabase';
 
 // ── Not-logged-in placeholder ─────────────────────────────────
 const GUEST_USER: User = { id: 'guest', name: 'Guest', avatar: '', isLoggedIn: false };
@@ -167,6 +168,27 @@ export default function App() {
     const interval = setInterval(loadDiscussions, 60_000);
     return () => clearInterval(interval);
   }, [loadDiscussions]);
+
+  // ── Live current speaker via Supabase Realtime ─────────────
+  useEffect(() => {
+    if (discussions.length === 0) return;
+    const liveTopicIds = discussions.filter(d => d.status === 'live').map(d => d.id);
+    if (liveTopicIds.length === 0) return;
+
+    const channels = liveTopicIds.map(topicId => {
+      const ch = supabase.channel(`topic_presence:${topicId}`);
+      ch.on('broadcast', { event: 'current_speaker' }, ({ payload }: any) => {
+        setDiscussions(prev => prev.map(d =>
+          d.id === payload.topicId
+            ? { ...d, currentSpeaker: payload.name || undefined }
+            : d
+        ));
+      }).subscribe();
+      return ch;
+    });
+
+    return () => { channels.forEach(ch => supabase.removeChannel(ch)); };
+  }, [discussions.length]);
 
   // ── Handlers ───────────────────────────────────────────────
   const handleLogin = useCallback((supabaseUser?: any) => {

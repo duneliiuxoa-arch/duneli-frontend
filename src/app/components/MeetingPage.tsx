@@ -343,6 +343,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     toggleMicrophone(true).catch(() => {});
     setMicMuted(false);
     realtimeRef.current?.send({ type: 'broadcast', event: 'queue_speaking_start', payload: { userId, agoraUid, name: userName } });
+    // Broadcast current speaker to homepage
+    supabase.channel(`topic_presence:${discussion.id}`).send({ type: 'broadcast', event: 'current_speaker', payload: { name: userName, topicId: discussion.id } }).catch(() => {});
     speakingTimerRef.current = setInterval(() => {
       setSpeakerTimeLeft(prev => {
         if (prev === null || prev <= 1) { clearInterval(speakingTimerRef.current!); endSpeaking(); return null; }
@@ -367,6 +369,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     if (isTranscribing) transcriptionService.stop().then(() => { setIsTranscribing(false); setLiveTranscript(''); });
     realtimeRef.current?.send({ type: 'broadcast', event: 'queue_speaking_end', payload: { userId } });
     realtimeRef.current?.track({ name: userName, role: userRole, agoraUid: String(toAgoraUid(userId)), userId, handRaised: false });
+    // Clear current speaker on homepage
+    supabase.channel(`topic_presence:${discussion.id}`).send({ type: 'broadcast', event: 'current_speaker', payload: { name: null, topicId: discussion.id } }).catch(() => {});
   };
 
   // ── 10 sec auto-skip when it's your turn ──────────────────
