@@ -46,7 +46,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const [agoraError, setAgoraError]         = useState<string | null>(null);
   const [ideas, setIdeas]                   = useState<Idea[]>([]);
   const [ideaInput, setIdeaInput]           = useState('');
-  const [ideaCooldown, setIdeaCooldown]     = useState(0); // seconds remaining
+  const [ideaCooldown, setIdeaCooldown]     = useState(0);
   const ideaCooldownRef                     = useRef<ReturnType<typeof setInterval> | null>(null);
   const [chatOpen, setChatOpen]             = useState(false);
   const [chatMsgs, setChatMsgs]             = useState<ChatMsg[]>([]);
@@ -55,6 +55,13 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const [chatError, setChatError]           = useState<string | null>(null);
   const [sessionToken, setSessionToken]     = useState<string | null>(null);
   const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
+
+  // ── Queue state ───────────────────────────────────────────
+  // Each entry: { userId, name, joinedAt (timestamp for ordering) }
+  const [speakingQueue, setSpeakingQueue]   = useState<{ userId: string; name: string; joinedAt: number }[]>([]);
+  const [isSpeaking, setIsSpeaking]         = useState(false); // this user is currently speaking
+  const speakingTimerRef                    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const SPEAK_LIMIT_SEC                     = 180; // 3 minutes
 
   const realtimeRef    = useRef<any>(null);
   const ideasChannelRef = useRef<any>(null);
@@ -200,6 +207,30 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                 ? { ...p, handRaised: payload.raised, name: payload.name } : p
             ));
           })
+          // ── Queue sync broadcasts ──────────────────────────
+          .on('broadcast', { event: 'queue_join' }, ({ payload }: any) => {
+            setSpeakingQueue(prev => {
+              if (prev.find(q => q.userId === payload.userId)) return prev;
+              return [...prev, { userId: payload.userId, name: payload.name, joinedAt: payload.joinedAt }]
+                .sort((a, b) => a.joinedAt - b.joinedAt);
+            });
+          })
+          .on('broadcast', { event: 'queue_leave' }, ({ payload }: any) => {
+            setSpeakingQueue(prev => prev.filter(q => q.userId !== payload.userId));
+          })
+          .on('broadcast', { event: 'queue_speaking_start' }, ({ payload }: any) => {
+            // When someone starts speaking, remove them from queue display
+            setSpeakingQueue(prev => prev.filter(q => q.userId !== payload.userId));
+            setParticipants(prev => prev.map(p =>
+              p.id === payload.userId || p.id === payload.agoraUid
+                ? { ...p, isSpeaking: true } : p
+            ));
+          })
+          .on('broadcast', { event: 'queue_speaking_end' }, ({ payload }: any) => {
+            setParticipants(prev => prev.map(p =>
+              p.id === payload.userId ? { ...p, isSpeaking: false, handRaised: false } : p
+            ));
+          })
           .subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
               await channel.track({ name: userName, role: userRole, agoraUid: String(toAgoraUid(userId)), userId, handRaised: false });
@@ -271,23 +302,59 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     } catch (err: any) { console.error('Mic error:', err); }
   };
 
-  // ── Hand raise ────────────────────────────────────────────
+  // ── Hand raise → Queue join/leave ─────────────────────────
   const handleHandRaise = () => {
+    if (isSpeaking) return; // disabled while speaking
     const next = !handRaised;
     setHandRaised(next);
-    if (realtimeRef.current && currentUserId) {
-      realtimeRef.current.send({
-        type: 'broadcast', event: 'hand_raise',
-        payload: { userId: currentUserId, agoraUid: String(toAgoraUid(currentUserId)), name: userName, raised: next },
+    const userId = currentUserId || userIdRef.current;
+    const agoraUid = String(toAgoraUid(userId));
+
+    if (next) {
+      const joinedAt = Date.now();
+      setSpeakingQueue(prev => {
+        if (prev.find(q => q.userId === userId)) return prev;
+        return [...prev, { userId, name: userName, joinedAt }].sort((a, b) => a.joinedAt - b.joinedAt);
       });
-      realtimeRef.current.track({
-        name: userName, role: userRole,
-        agoraUid: String(toAgoraUid(currentUserId)), userId: currentUserId, handRaised: next,
-      });
+      realtimeRef.current?.send({ type: 'broadcast', event: 'queue_join', payload: { userId, agoraUid, name: userName, joinedAt } });
+    } else {
+      setSpeakingQueue(prev => prev.filter(q => q.userId !== userId));
+      realtimeRef.current?.send({ type: 'broadcast', event: 'queue_leave', payload: { userId } });
     }
-    setParticipants(prev => prev.map(p =>
-      p.id === String(toAgoraUid(currentUserId || '')) || p.id === currentUserId ? { ...p, handRaised: next } : p
-    ));
+    realtimeRef.current?.track({ name: userName, role: userRole, agoraUid, userId, handRaised: next });
+    setParticipants(prev => prev.map(p => p.id === agoraUid || p.id === userId ? { ...p, handRaised: next } : p));
+  };
+
+  // ── Start speaking ────────────────────────────────────────
+  const startSpeaking = () => {
+    const userId = currentUserId || userIdRef.current;
+    const agoraUid = String(toAgoraUid(userId));
+    setIsSpeaking(true);
+    setHandRaised(false);
+    setSpeakerTimeLeft(SPEAK_LIMIT_SEC);
+    toggleMicrophone(true).catch(() => {});
+    setMicMuted(false);
+    realtimeRef.current?.send({ type: 'broadcast', event: 'queue_speaking_start', payload: { userId, agoraUid, name: userName } });
+    speakingTimerRef.current = setInterval(() => {
+      setSpeakerTimeLeft(prev => {
+        if (prev === null || prev <= 1) { clearInterval(speakingTimerRef.current!); endSpeaking(); return null; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // ── End speaking ──────────────────────────────────────────
+  const endSpeaking = () => {
+    const userId = currentUserId || userIdRef.current;
+    if (speakingTimerRef.current) clearInterval(speakingTimerRef.current);
+    setIsSpeaking(false);
+    setHandRaised(false);
+    setSpeakerTimeLeft(null);
+    setMicMuted(true);
+    toggleMicrophone(false).catch(() => {});
+    if (isTranscribing) transcriptionService.stop().then(() => { setIsTranscribing(false); setLiveTranscript(''); });
+    realtimeRef.current?.send({ type: 'broadcast', event: 'queue_speaking_end', payload: { userId } });
+    realtimeRef.current?.track({ name: userName, role: userRole, agoraUid: String(toAgoraUid(userId)), userId, handRaised: false });
   };
 
   // ── Ideas realtime sync ─────────────────────────────────
@@ -497,23 +564,40 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
               <Clock className="w-4 h-4" />
               <span className="font-mono font-bold">{formatTime(speakerTimeLeft)}</span>
               <span className="text-sm opacity-80">remaining</span>
+              <button onClick={endSpeaking} className="ml-auto text-xs underline opacity-70 hover:opacity-100">
+                Done
+              </button>
             </div>
           )}
 
-          {/* Hand Raise Queue */}
-          {raisedHands.length > 0 && (
+          {/* Speaking Queue — ordered list */}
+          {speakingQueue.length > 0 && (
             <div className="mb-6">
               <h3 className={`text-xs uppercase tracking-wider opacity-60 mb-3 ${theme.textColor}`}>
-                ✋ Speaking Queue ({raisedHands.length})
+                ✋ Speaking Queue ({speakingQueue.length})
               </h3>
               <div className="space-y-2">
-                {raisedHands.map((p, i) => (
-                  <div key={p.id} className={`${theme.cardStyle} rounded-xl px-4 py-3 flex items-center gap-3`}>
-                    <div className={`w-6 h-6 rounded-full ${theme.buttonClass} flex items-center justify-center text-xs font-bold`}>{i + 1}</div>
-                    <span className="flex-1 text-sm">{p.name}</span>
-                    <Hand className="w-4 h-4 opacity-60" />
-                  </div>
-                ))}
+                {speakingQueue.map((q, i) => {
+                  const isMe = q.userId === (currentUserId || userIdRef.current);
+                  const isNext = i === 0;
+                  return (
+                    <div key={q.userId} className={`rounded-xl px-4 py-3 flex items-center gap-3 ${
+                      isMe
+                        ? 'bg-indigo-500/20 border border-indigo-500/40'
+                        : isNext
+                          ? isDark ? 'bg-green-500/15 border border-green-500/30' : 'bg-green-50 border border-green-200'
+                          : theme.cardStyle
+                    }`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                        isNext ? 'bg-green-500 text-white' : theme.buttonClass
+                      }`}>{i + 1}</div>
+                      <span className={`flex-1 text-sm font-medium ${isMe ? 'text-indigo-400' : ''}`}>
+                        {isMe ? 'You' : q.name}
+                      </span>
+                      {isNext && <span className="text-[10px] text-green-400 font-semibold">NEXT</span>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -787,13 +871,47 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
               <div className="flex items-center justify-between gap-4 w-full">
                 <div className="flex items-center gap-3">
 
-                  {/* Listener/Speaker: Hand Raise */}
-                  {(userRole === 'listener' || userRole === 'speaker') && (
+                  {/* Listener/Speaker: Hand Raise — disabled while speaking */}
+                  {(userRole === 'listener' || userRole === 'speaker') && !isSpeaking && (
                     <button onClick={handleHandRaise}
-                      className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${handRaised ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`}`}>
+                      className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${
+                        handRaised ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`
+                      }`}>
                       <Hand className={`w-5 h-5 ${handRaised ? '' : 'opacity-70'}`} />
-                      {handRaised ? 'Hand Raised' : 'Raise Hand'}
+                      {handRaised ? 'Lower Hand' : 'Raise Hand'}
                     </button>
+                  )}
+
+                  {/* "Your Turn!" button — appears when user is first in queue & not yet speaking */}
+                  {speakingQueue.length > 0 &&
+                   speakingQueue[0].userId === (currentUserId || userIdRef.current) &&
+                   !isSpeaking && (
+                    <motion.button
+                      onClick={startSpeaking}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: [1, 1.05, 1], opacity: 1 }}
+                      transition={{ repeat: Infinity, duration: 1.4 }}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-green-500 text-white font-bold text-sm shadow-lg shadow-green-500/30">
+                      <Mic className="w-5 h-5" />
+                      Your Turn — Speak Now!
+                    </motion.button>
+                  )}
+
+                  {/* Speaking badge + End button */}
+                  {isSpeaking && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-red-500 text-white text-sm font-bold">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                        </span>
+                        Speaking — {speakerTimeLeft !== null ? formatTime(speakerTimeLeft) : ''}
+                      </div>
+                      <button onClick={endSpeaking}
+                        className={`px-4 py-2 rounded-2xl text-sm font-medium ${theme.cardStyle} hover:bg-red-500/20 transition-all`}>
+                        Done
+                      </button>
+                    </div>
                   )}
 
                   {/* Debater/Speaker: Mic */}
