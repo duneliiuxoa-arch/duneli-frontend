@@ -1,4 +1,4 @@
-import { Radio, Users, Clock, Hand, Mic, MicOff, LogOut, Volume2, Headphones, Send, MessageSquare, X } from 'lucide-react';
+import { Radio, Users, Clock, Hand, ThumbsUp, ThumbsDown, Mic, MicOff, LogOut, Volume2, Headphones, Send, MessageSquare, X } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Theme, Role, Discussion, Participant, Idea } from '../types';
 import { themes } from '../config/themes';
@@ -16,11 +16,11 @@ import { supabase } from '../../lib/supabase';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface ChatMsg {
-  id: string
-  message: string
-  createdAt: string
-  user: { id: string; name: string; anonymousId: string | null }
-  pending?: boolean
+  id: string;
+  message: string;
+  createdAt: string;
+  user: { id: string; name: string; anonymousId: string | null };
+  pending?: boolean;
 }
 
 interface MeetingPageProps {
@@ -31,52 +31,37 @@ interface MeetingPageProps {
   onLeave: () => void;
 }
 
-export function MeetingPage({
-  discussion,
-  currentTheme,
-  userRole,
-  userName,
-  onLeave,
-}: MeetingPageProps) {
+export function MeetingPage({ discussion, currentTheme, userRole, userName, onLeave }: MeetingPageProps) {
   const theme = themes[currentTheme];
+  const isDark = theme.textColor === 'text-white';
 
-  // ── Timer ─────────────────────────────────────────────────
-  const [elapsedTime, setElapsedTime] = useState(0);
-
-  // ── Mic / hand state ──────────────────────────────────────
-  const [micMuted, setMicMuted] = useState(true);
-  const [handRaised, setHandRaised] = useState(false);
+  // ── State ─────────────────────────────────────────────────
+  const [elapsedTime, setElapsedTime]       = useState(0);
+  const [micMuted, setMicMuted]             = useState(true);
+  const [handRaised, setHandRaised]         = useState(false);
   const [speakerTimeLeft, setSpeakerTimeLeft] = useState<number | null>(null);
-
-  // ── Transcription state ────────────────────────────────────
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState('');
-  const meetingIdRef = useRef<string>('');
-  const userIdRef    = useRef<string>('');
-  const anonIdRef    = useRef<string>('');
+  const [participants, setParticipants]     = useState<Participant[]>([]);
+  const [agoraError, setAgoraError]         = useState<string | null>(null);
+  const [ideas, setIdeas]                   = useState<Idea[]>([]);
+  const [chatOpen, setChatOpen]             = useState(false);
+  const [chatMsgs, setChatMsgs]             = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput]           = useState('');
+  const [chatSending, setChatSending]       = useState(false);
+  const [chatError, setChatError]           = useState<string | null>(null);
+  const [sessionToken, setSessionToken]     = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
 
-  // ── Agora ─────────────────────────────────────────────────
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [agoraJoined, setAgoraJoined] = useState(false);
-  const [agoraError, setAgoraError] = useState<string | null>(null);
-  const [ideas] = useState<Idea[]>([]);
+  const realtimeRef    = useRef<any>(null);
   const speakerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chatBottomRef  = useRef<HTMLDivElement>(null);
+  const meetingIdRef   = useRef('');
+  const userIdRef      = useRef('');
+  const anonIdRef      = useRef('');
 
-  // ── Realtime channel for hand raise ───────────────────────
-  const realtimeRef = useRef<any>(null);
-
-  // ── Chat ──────────────────────────────────────────────────
-  const [chatOpen, setChatOpen]     = useState(true);
-  const [chatMsgs, setChatMsgs]     = useState<ChatMsg[]>([]);
-  const [chatInput, setChatInput]   = useState('');
-  const [chatSending, setChatSending] = useState(false);
-  const [chatError, setChatError]   = useState<string | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
-  const pollRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Get session token once ─────────────────────────────────
+  // ── Session ────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSessionToken(session?.access_token || null);
@@ -84,7 +69,7 @@ export function MeetingPage({
     });
   }, []);
 
-  // ── Fetch chat messages ────────────────────────────────────
+  // ── Chat fetch ────────────────────────────────────────────
   const fetchMessages = useCallback(async () => {
     if (!sessionToken) return;
     try {
@@ -97,7 +82,6 @@ export function MeetingPage({
     } catch { /* silent */ }
   }, [discussion.id, sessionToken]);
 
-  // Initial fetch + poll every 4s
   useEffect(() => {
     if (!sessionToken) return;
     fetchMessages();
@@ -105,100 +89,64 @@ export function MeetingPage({
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchMessages, sessionToken]);
 
-  // Auto-scroll to bottom when messages arrive
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMsgs]);
 
-  // ── Send message ──────────────────────────────────────────
+  // ── Send chat ─────────────────────────────────────────────
   const sendMessage = async () => {
     const text = chatInput.trim();
     if (!text || chatSending || !sessionToken) return;
-
-    // Optimistic
     const tempId = `tmp-${Date.now()}`;
-    const optimistic: ChatMsg = {
-      id: tempId,
-      message: text,
-      createdAt: new Date().toISOString(),
-      user: { id: currentUserId || 'me', name: userName, anonymousId: null },
-      pending: true,
-    };
-    setChatMsgs(prev => [...prev, optimistic]);
+    setChatMsgs(prev => [...prev, { id: tempId, message: text, createdAt: new Date().toISOString(), user: { id: currentUserId || 'me', name: userName, anonymousId: null }, pending: true }]);
     setChatInput('');
     setChatSending(true);
     setChatError(null);
-
     try {
       const res = await fetch(`${API_URL}/api/discussions/${discussion.id}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
         body: JSON.stringify({ message: text }),
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to send');
-      }
-
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to send');
       const data = await res.json();
-      // Replace optimistic with real
       setChatMsgs(prev => prev.map(m => m.id === tempId ? { ...data.message, pending: false } : m));
     } catch (err: any) {
-      setChatError(err.message || 'Failed to send message');
+      setChatError(err.message || 'Failed to send');
       setChatMsgs(prev => prev.filter(m => m.id !== tempId));
-    } finally {
-      setChatSending(false);
-    }
+    } finally { setChatSending(false); }
   };
 
   const handleChatKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  // ── Join Agora ─────────────────────────────────────────────
+  // ── Agora + Supabase Presence ─────────────────────────────
   useEffect(() => {
     let cancelled = false;
     const join = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const userId = session?.user?.id || 'guest-' + Date.now();
-        const anonId = session?.user?.user_metadata?.anonymousId || userId.slice(0, 8);
-
-        // Store refs for transcription
         meetingIdRef.current = discussion.meetingId || discussion.id;
         userIdRef.current    = userId;
-        anonIdRef.current    = anonId;
+        anonIdRef.current    = session?.user?.user_metadata?.anonymousId || userId.slice(0, 8);
 
         await joinAgoraChannel(discussion.id, userId, userRole);
         if (cancelled) return;
-        setAgoraJoined(true);
-
-        // Apna participant add karo
         setParticipants([{ id: userId, name: userName, role: userRole, isSpeaking: false }]);
 
         const client = getAgoraClient();
         if (client) {
-          // ── Existing users jo pehle se channel mein hain unhe add karo ──
           client.remoteUsers.forEach(user => {
             setParticipants(prev => {
               if (prev.find(p => p.id === String(user.uid))) return prev;
-              return [...prev, {
-                id: String(user.uid),
-                name: `User-${String(user.uid)}`,
-                role: 'listener' as Role,
-                isSpeaking: false,
-              }];
+              return [...prev, { id: String(user.uid), name: `User-${String(user.uid)}`, role: 'listener' as Role, isSpeaking: false }];
             });
           });
-
           client.on('user-joined', (user) => {
             setParticipants(prev => {
               if (prev.find(p => p.id === String(user.uid))) return prev;
-              // Role baad mein Supabase Presence se update hoga
               return [...prev, { id: String(user.uid), name: `User-${String(user.uid)}`, role: 'listener' as Role, isSpeaking: false }];
             });
           });
@@ -210,89 +158,47 @@ export function MeetingPage({
             if (mediaType === 'audio') setParticipants(prev => prev.map(p => p.id === String(user.uid) ? { ...p, isSpeaking: false } : p));
           });
         }
+
         if (session?.access_token) {
           fetch(`${API_URL}/api/discussions/${discussion.id}/join`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
           }).catch(() => {});
         }
 
-        // ── Supabase Realtime: participants sync + hand-raise broadcast ──
+        // Supabase Presence
         const channel = supabase.channel(`meeting:${discussion.id}`, {
           config: { broadcast: { self: false }, presence: { key: userId } },
         });
 
+        const updateFromPresence = (p: any) => {
+          if (!p) return;
+          setParticipants(prev => {
+            const exists = prev.find(pt => pt.id === p.agoraUid || pt.id === p.userId);
+            if (exists) return prev.map(pt => pt.id === p.agoraUid || pt.id === p.userId ? { ...pt, name: p.name, role: p.role as Role, handRaised: p.handRaised ?? false } : pt);
+            return [...prev, { id: p.agoraUid, name: p.name, role: p.role as Role, isSpeaking: false, handRaised: p.handRaised ?? false }];
+          });
+        };
+
         channel
-          // Presence — real-time participant list with names + roles
           .on('presence', { event: 'sync' }, () => {
-            const state = channel.presenceState<{ name: string; role: string; agoraUid: string; userId: string; handRaised: boolean }>();
-            Object.values(state).forEach((presences: any[]) => {
-              const p = presences[0];
-              if (!p) return;
-              setParticipants(prev => {
-                const exists = prev.find(pt => pt.id === p.agoraUid || pt.id === p.userId);
-                if (exists) {
-                  return prev.map(pt =>
-                    pt.id === p.agoraUid || pt.id === p.userId
-                      ? { ...pt, name: p.name, role: p.role as Role, handRaised: p.handRaised ?? false }
-                      : pt
-                  );
-                }
-                return [...prev, { id: p.agoraUid, name: p.name, role: p.role as Role, isSpeaking: false, handRaised: p.handRaised ?? false }];
-              });
-            });
+            const state = channel.presenceState<any>();
+            Object.values(state).forEach((presences: any) => updateFromPresence(presences[0]));
           })
-          .on('presence', { event: 'join' }, ({ newPresences }: any) => {
-            const p = newPresences[0];
-            if (!p) return;
-            setParticipants(prev => {
-              const exists = prev.find(pt => pt.id === p.agoraUid || pt.id === p.userId);
-              if (exists) {
-                return prev.map(pt =>
-                  pt.id === p.agoraUid || pt.id === p.userId
-                    ? { ...pt, name: p.name, role: p.role as Role, handRaised: p.handRaised ?? false }
-                    : pt
-                );
-              }
-              return [...prev, { id: p.agoraUid, name: p.name, role: p.role as Role, isSpeaking: false, handRaised: p.handRaised ?? false }];
-            });
-          })
-          // Hand raise broadcast
+          .on('presence', { event: 'join' }, ({ newPresences }: any) => updateFromPresence(newPresences[0]))
           .on('broadcast', { event: 'hand_raise' }, ({ payload }: any) => {
             setParticipants(prev => prev.map(p =>
-              // agoraUid ya userId dono se match karo
               p.id === payload.agoraUid || p.id === payload.userId
-                ? { ...p, handRaised: payload.raised, name: payload.name }
-                : p
+                ? { ...p, handRaised: payload.raised, name: payload.name } : p
             ));
           })
           .subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
-              // Apna presence track karo
-              await channel.track({
-                name: userName,
-                role: userRole,
-                agoraUid: String(toAgoraUid(userId)),
-                userId,
-                handRaised: false,
-              });
-
-              // Late joiner: subscribe hote hi existing presence state fetch karo
-              const state = channel.presenceState<{ name: string; role: string; agoraUid: string; userId: string; handRaised: boolean }>();
-              Object.values(state).forEach((presences: any[]) => {
+              await channel.track({ name: userName, role: userRole, agoraUid: String(toAgoraUid(userId)), userId, handRaised: false });
+              const state = channel.presenceState<any>();
+              Object.values(state).forEach((presences: any) => {
                 const p = presences[0];
                 if (!p || p.userId === userId) return;
-                setParticipants(prev => {
-                  const exists = prev.find(pt => pt.id === p.agoraUid || pt.id === p.userId);
-                  if (exists) {
-                    return prev.map(pt =>
-                      pt.id === p.agoraUid || pt.id === p.userId
-                        ? { ...pt, name: p.name, role: p.role as Role, handRaised: p.handRaised ?? false }
-                        : pt
-                    );
-                  }
-                  return [...prev, { id: p.agoraUid, name: p.name, role: p.role as Role, isSpeaking: false, handRaised: p.handRaised ?? false }];
-                });
+                updateFromPresence(p);
               });
             }
           });
@@ -305,16 +211,13 @@ export function MeetingPage({
     join();
     return () => {
       cancelled = true;
-      // Stop transcription on leave
-      if (transcriptionService.getIsRunning()) {
-        transcriptionService.stop().catch(() => {});
-      }
+      if (transcriptionService.getIsRunning()) transcriptionService.stop().catch(() => {});
       leaveAgoraChannel().catch(() => {});
       if (realtimeRef.current) { supabase.removeChannel(realtimeRef.current); realtimeRef.current = null; }
     };
   }, [discussion.id, userRole, userName]);
 
-  // ── Elapsed timer ──────────────────────────────────────────
+  // ── Timer ─────────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
     return () => clearInterval(t);
@@ -322,13 +225,12 @@ export function MeetingPage({
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
+  // ── Mic toggle ────────────────────────────────────────────
   const handleMicToggle = async () => {
     try {
-      const next = !micMuted; // next = true means unmuting
+      const next = !micMuted;
       await toggleMicrophone(!next);
       setMicMuted(next);
-
-      // Speaker timer
       if (userRole === 'speaker' && !next) {
         setSpeakerTimeLeft(180);
         speakerTimerRef.current = setInterval(() => {
@@ -337,7 +239,6 @@ export function MeetingPage({
               clearInterval(speakerTimerRef.current!);
               toggleMicrophone(false).catch(() => {});
               setMicMuted(true);
-              // Stop transcription when time is up
               transcriptionService.stop().then(() => setIsTranscribing(false));
               return null;
             }
@@ -348,318 +249,351 @@ export function MeetingPage({
         clearInterval(speakerTimerRef.current);
         setSpeakerTimeLeft(null);
       }
-
-      // ── Transcription start/stop ───────────────────────────
       if (!next && (userRole === 'speaker' || userRole === 'debater')) {
-        // Unmuted → start transcription
-        const meetingId = meetingIdRef.current;
-        const userId    = userIdRef.current;
-        const anonId    = anonIdRef.current;
-
-        if (meetingId && !isTranscribing) {
+        if (meetingIdRef.current && !isTranscribing) {
           transcriptionService.start(
-            meetingId, userId, anonId,
-            (segment) => {
-              if (segment.isFinal) {
-                setLiveTranscript('');
-              } else {
-                setLiveTranscript(segment.text);
-              }
-            }
-          ).then(() => setIsTranscribing(true))
-           .catch(err => console.error('[transcription] Start failed:', err));
+            meetingIdRef.current, userIdRef.current, anonIdRef.current,
+            (segment) => segment.isFinal ? setLiveTranscript('') : setLiveTranscript(segment.text)
+          ).then(() => setIsTranscribing(true)).catch(() => {});
         }
       } else if (next && isTranscribing) {
-        // Muted → stop transcription
-        transcriptionService.stop().then(() => {
-          setIsTranscribing(false);
-          setLiveTranscript('');
-        });
+        transcriptionService.stop().then(() => { setIsTranscribing(false); setLiveTranscript(''); });
       }
-    } catch (err: any) {
-      console.error('Mic toggle error:', err);
-    }
+    } catch (err: any) { console.error('Mic error:', err); }
   };
 
-  const currentSpeaker = participants.find(p => p.isSpeaking);
-  const isDark = theme.textColor === 'text-white';
-  const msgBubbleOwn  = isDark ? 'bg-indigo-600 text-white'   : 'bg-indigo-500 text-white';
-  const msgBubbleOther = isDark ? 'bg-white/10 text-white'    : 'bg-gray-100 text-gray-800';
+  // ── Hand raise ────────────────────────────────────────────
+  const handleHandRaise = () => {
+    const next = !handRaised;
+    setHandRaised(next);
+    if (realtimeRef.current && currentUserId) {
+      realtimeRef.current.send({
+        type: 'broadcast', event: 'hand_raise',
+        payload: { userId: currentUserId, agoraUid: String(toAgoraUid(currentUserId)), name: userName, raised: next },
+      });
+      realtimeRef.current.track({
+        name: userName, role: userRole,
+        agoraUid: String(toAgoraUid(currentUserId)), userId: currentUserId, handRaised: next,
+      });
+    }
+    setParticipants(prev => prev.map(p =>
+      p.id === String(toAgoraUid(currentUserId || '')) || p.id === currentUserId ? { ...p, handRaised: next } : p
+    ));
+  };
+
+  // ── Idea reactions ────────────────────────────────────────
+  const handleIdeaReaction = (ideaId: string, type: 'agree' | 'disagree') => {
+    setIdeas(ideas.map(idea => {
+      if (idea.id !== ideaId) return idea;
+      if (type === 'agree') return { ...idea, hasUserAgreed: !idea.hasUserAgreed, hasUserDisagreed: false, agreeCount: idea.hasUserAgreed ? idea.agreeCount - 1 : idea.agreeCount + 1, disagreeCount: idea.hasUserDisagreed ? idea.disagreeCount - 1 : idea.disagreeCount };
+      return { ...idea, hasUserDisagreed: !idea.hasUserDisagreed, hasUserAgreed: false, disagreeCount: idea.hasUserDisagreed ? idea.disagreeCount - 1 : idea.disagreeCount + 1, agreeCount: idea.hasUserAgreed ? idea.agreeCount - 1 : idea.agreeCount };
+    }));
+  };
+
+  const currentSpeaker  = participants.find(p => p.isSpeaking);
+  const raisedHands     = participants.filter(p => (p as any).handRaised);
+  const msgBubbleOwn    = isDark ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white';
+  const msgBubbleOther  = isDark ? 'bg-white/10 text-white'   : 'bg-gray-100 text-gray-800';
+  const borderCls       = isDark ? 'border-white/10' : 'border-gray-200';
 
   return (
-    <div className={`min-h-screen ${theme.background} ${theme.textColor} flex flex-col`}>
-      {/* ── Header ── */}
-      <div className={`flex items-center justify-between px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-        <div className="flex items-center gap-3">
-          <Radio className="w-5 h-5 text-indigo-400 animate-pulse" />
-          <div>
-            <h1 className="font-semibold text-sm leading-tight line-clamp-1">{discussion.title}</h1>
-            <div className="flex items-center gap-2 text-xs opacity-60">
-              <Clock className="w-3 h-3" />
-              <span>{formatTime(elapsedTime)}</span>
-              <Users className="w-3 h-3 ml-1" />
-              <span>{participants.length}</span>
+    <div className={`min-h-screen ${theme.textColor} flex flex-col`} style={{ background: theme.background, fontFamily: 'var(--font-body)' }}>
+
+      {/* ── Top Bar ── */}
+      <div className={`${theme.cardStyle} px-6 py-4 border-b ${borderCls}`}>
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          {/* Live badge + topic */}
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            <div className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-full font-medium flex-shrink-0 text-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+              </span>
+              <Radio className="w-4 h-4" />
+              LIVE
             </div>
+            <h1 className={`font-semibold truncate ${theme.textColor}`}>{discussion.title}</h1>
+          </div>
+
+          {/* Stats + Leave */}
+          <div className="flex items-center gap-6">
+            <div className={`hidden sm:flex items-center gap-6 ${theme.textColor} opacity-70`}>
+              <div className="flex items-center gap-2 text-sm">
+                <Clock className="w-4 h-4" />
+                <span>{formatTime(elapsedTime)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="w-4 h-4" />
+                <span>{participants.length} in room</span>
+              </div>
+            </div>
+            <button onClick={onLeave}
+              className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white font-medium transition-all text-sm">
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Leave</span>
+            </button>
           </div>
         </div>
-        <button
-          onClick={onLeave}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs font-medium transition-colors"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-          Leave
-        </button>
       </div>
 
-      {/* ── Main content ── */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* ── Left: Participants + Controls ── */}
-        <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Agora error banner */}
-          {agoraError && (
-            <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-red-500/20 text-red-400 text-xs">
-              ⚠️ Audio: {agoraError}
-            </div>
-          )}
+      {/* ── Error banner ── */}
+      {agoraError && (
+        <div className="mx-6 mt-3 px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-sm">
+          ⚠️ Audio: {agoraError}
+        </div>
+      )}
 
-          {/* Current speaker */}
-          {currentSpeaker && (
-            <div className={`mx-4 mt-3 px-3 py-2 rounded-xl flex items-center gap-2 text-sm ${isDark ? 'bg-indigo-500/20' : 'bg-indigo-50 border border-indigo-200'}`}>
-              <Volume2 className="w-4 h-4 text-indigo-400 animate-pulse" />
-              <span className="font-medium">{currentSpeaker.name}</span>
-              <span className="opacity-60 text-xs">is speaking…</span>
-            </div>
-          )}
+      {/* ── Main Layout ── */}
+      <div className="flex-1 flex overflow-hidden max-w-7xl mx-auto w-full">
 
-          {/* Hands raised banner */}
-          {participants.filter(p => (p as any).handRaised).length > 0 && (
-            <div className={`mx-4 mt-2 px-3 py-2 rounded-xl flex items-center gap-2 text-sm flex-wrap ${isDark ? 'bg-yellow-500/15 border border-yellow-500/30' : 'bg-yellow-50 border border-yellow-200'}`}>
-              <span className="text-base">✋</span>
-              <span className="text-yellow-400 font-semibold text-xs">Hands raised:</span>
-              {participants.filter(p => (p as any).handRaised).map(p => (
-                <span key={p.id} className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300">{p.name}</span>
-              ))}
-            </div>
-          )}
+        {/* ── Left Panel — Queue & Participants ── */}
+        <div className={`w-72 flex-shrink-0 ${theme.cardStyle} p-6 overflow-y-auto border-r ${borderCls} hidden md:block`}>
 
-          {/* Live transcript banner */}
-          {liveTranscript && (
-            <div className={`mx-4 mt-2 px-3 py-2 rounded-xl text-xs italic ${isDark ? 'bg-purple-500/15 border border-purple-500/30 text-purple-300' : 'bg-purple-50 border border-purple-200 text-purple-700'}`}>
-              🎙️ <span className="font-semibold">Live:</span> {liveTranscript}
+          {/* Your Role */}
+          <div className="mb-6">
+            <h3 className={`text-xs uppercase tracking-wider opacity-60 mb-3 ${theme.textColor}`}>Your Role</h3>
+            <div className={`${theme.buttonClass} rounded-2xl px-4 py-3 flex items-center gap-3`}>
+              {userRole === 'listener' && <Headphones className="w-5 h-5" />}
+              {userRole === 'speaker'  && <Mic className="w-5 h-5" />}
+              {userRole === 'debater'  && <Volume2 className="w-5 h-5" />}
+              <span className="font-medium capitalize">{userRole}</span>
             </div>
-          )}
-
-          {/* Transcription indicator */}
-          {isTranscribing && (
-            <div className="mx-4 mt-1 flex items-center gap-1.5 text-xs text-green-400">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              Transcribing audio...
-            </div>
-          )}
-
-          {/* Participants grid */}
-          <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3 content-start">
-            {participants.map(p => (
-              <div
-                key={p.id}
-                className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all relative ${
-                  p.isSpeaking
-                    ? 'ring-2 ring-indigo-400 ' + (isDark ? 'bg-indigo-500/10' : 'bg-indigo-50')
-                    : (p as any).handRaised
-                    ? 'ring-2 ring-yellow-400 ' + (isDark ? 'bg-yellow-500/10' : 'bg-yellow-50')
-                    : isDark ? 'bg-white/5' : 'bg-gray-50'
-                }`}
-              >
-                {/* Hand raised badge */}
-                {(p as any).handRaised && (
-                  <span className="absolute -top-1 -right-1 text-base animate-bounce">✋</span>
-                )}
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-base font-bold ${isDark ? 'bg-white/10' : 'bg-indigo-100 text-indigo-600'}`}>
-                  {p.name.charAt(0).toUpperCase()}
-                </div>
-                <span className="text-xs text-center line-clamp-1 opacity-80">{p.name}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                  p.role === 'speaker' ? 'bg-indigo-500/30 text-indigo-300' :
-                  p.role === 'moderator' ? 'bg-yellow-500/30 text-yellow-300' :
-                  'bg-gray-500/20 text-gray-400'
-                }`}>{p.role}</span>
-              </div>
-            ))}
           </div>
 
-          {/* ── Bottom controls ── */}
-          <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'} flex items-center justify-center gap-4`}>
-            {/* Mic */}
-            <button
-              onClick={handleMicToggle}
-              disabled={userRole === 'listener'}
-              className={`p-3 rounded-full transition-all ${
-                userRole === 'listener'
-                  ? 'opacity-30 cursor-not-allowed bg-gray-500/20'
-                  : micMuted
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                  : 'bg-green-500/20 text-green-400 hover:bg-green-500/30 ring-2 ring-green-400'
-              }`}
-            >
-              {micMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
-
-            {/* Speaker timer */}
-            {speakerTimeLeft !== null && (
-              <span className="text-xs text-yellow-400 font-mono">{formatTime(speakerTimeLeft)}</span>
-            )}
-
-            {/* Hand raise */}
-            {userRole === 'listener' && (
-              <button
-                onClick={() => {
-                  const next = !handRaised;
-                  setHandRaised(next);
-                  if (realtimeRef.current && currentUserId) {
-                    // Broadcast — existing users ke liye
-                    realtimeRef.current.send({
-                      type: 'broadcast',
-                      event: 'hand_raise',
-                      payload: {
-                        userId: currentUserId,
-                        agoraUid: String(toAgoraUid(currentUserId)),
-                        name: userName,
-                        raised: next,
-                      },
-                    });
-                    // Presence update — late joiners ke liye
-                    realtimeRef.current.track({
-                      name: userName,
-                      role: userRole,
-                      agoraUid: String(toAgoraUid(currentUserId)),
-                      userId: currentUserId,
-                      handRaised: next,
-                    });
-                  }
-                  // Apna card update karo
-                  setParticipants(prev => prev.map(p =>
-                    p.id === String(toAgoraUid(currentUserId || '')) || p.id === currentUserId
-                      ? { ...p, handRaised: next }
-                      : p
-                  ));
-                }}
-                className={`p-3 rounded-full transition-all ${
-                  handRaised ? 'bg-yellow-500/20 text-yellow-400 ring-2 ring-yellow-400' : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30'
-                }`}
-              >
-                <Hand className="w-5 h-5" />
-              </button>
-            )}
-
-            {/* Headphones indicator */}
-            <div className="p-3 rounded-full bg-gray-500/10 text-gray-400">
-              <Headphones className="w-5 h-5" />
+          {/* Speaker timer */}
+          {speakerTimeLeft !== null && (
+            <div className={`mb-4 px-4 py-3 rounded-2xl flex items-center gap-2 ${speakerTimeLeft <= 30 ? 'bg-red-500 text-white' : theme.buttonClass}`}>
+              <Clock className="w-4 h-4" />
+              <span className="font-mono font-bold">{formatTime(speakerTimeLeft)}</span>
+              <span className="text-sm opacity-80">remaining</span>
             </div>
+          )}
 
-            {/* Chat toggle */}
-            <button
-              onClick={() => setChatOpen(o => !o)}
-              className={`p-3 rounded-full transition-all ${chatOpen ? 'bg-indigo-500/20 text-indigo-400' : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30'}`}
-            >
-              <MessageSquare className="w-5 h-5" />
-            </button>
+          {/* Hand Raise Queue */}
+          {raisedHands.length > 0 && (
+            <div className="mb-6">
+              <h3 className={`text-xs uppercase tracking-wider opacity-60 mb-3 ${theme.textColor}`}>
+                ✋ Speaking Queue ({raisedHands.length})
+              </h3>
+              <div className="space-y-2">
+                {raisedHands.map((p, i) => (
+                  <div key={p.id} className={`${theme.cardStyle} rounded-xl px-4 py-3 flex items-center gap-3`}>
+                    <div className={`w-6 h-6 rounded-full ${theme.buttonClass} flex items-center justify-center text-xs font-bold`}>{i + 1}</div>
+                    <span className="flex-1 text-sm">{p.name}</span>
+                    <Hand className="w-4 h-4 opacity-60" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Participants */}
+          <div>
+            <h3 className={`text-xs uppercase tracking-wider opacity-60 mb-3 ${theme.textColor}`}>
+              Participants ({participants.length})
+            </h3>
+            <div className="space-y-2">
+              {participants.map(p => (
+                <div key={p.id}
+                  className={`rounded-xl px-4 py-3 flex items-center gap-3 relative ${
+                    p.isSpeaking ? theme.buttonClass : `${theme.cardStyle} opacity-80`
+                  }`}>
+                  {(p as any).handRaised && (
+                    <span className="absolute -top-1 -right-1 text-sm">✋</span>
+                  )}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${p.isSpeaking ? 'bg-white/20' : 'bg-white/10'}`}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{p.name}</p>
+                    <p className="text-xs opacity-60 capitalize">{p.role}</p>
+                  </div>
+                  {p.isSpeaking && (
+                    <span className="relative flex h-2 w-2 flex-shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* ── Chat panel ──
-            Desktop (md+): fixed-width side panel, slides in from right
-            Mobile (<md):  full-width bottom sheet, slides up over participants */}
-        <AnimatePresence>
-          {chatOpen && (
-            <>
-              {/* Mobile backdrop — sirf chhoti screen pe dikhta hai, tap to close */}
-              <motion.div
-                key="chat-backdrop"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                onClick={() => setChatOpen(false)}
-                className="md:hidden fixed inset-0 bg-black/40 z-40"
-              />
+        {/* ── Center — Stage + Ideas + Chat ── */}
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden">
 
-              <motion.div
-                key="chat"
-                initial={{ y: '100%', opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: '100%', opacity: 0 }}
-                transition={{ duration: 0.25, ease: 'easeOut' }}
-                className={`flex flex-col overflow-hidden z-50
-                  fixed bottom-0 left-0 right-0 h-[75vh] rounded-t-2xl border-t
-                  md:static md:h-auto md:w-[300px] md:rounded-none md:border-t-0 md:border-l
-                  ${isDark ? 'border-white/10 bg-[#0f0f1a] md:bg-white/5' : 'border-gray-200 bg-white md:bg-gray-50'}`}
-              >
-                {/* Mobile drag handle */}
-                <div className="md:hidden flex justify-center pt-2 pb-1">
-                  <div className={`w-10 h-1 rounded-full ${isDark ? 'bg-white/20' : 'bg-gray-300'}`} />
+            {/* Current Speaker Stage */}
+            <div className={`p-6 border-b ${borderCls}`}>
+              {currentSpeaker ? (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                  className={`${theme.cardStyle} rounded-3xl p-6 text-center`}>
+                  <div className={`w-20 h-20 rounded-full ${theme.buttonClass} flex items-center justify-center text-3xl font-bold mx-auto mb-3`}>
+                    {currentSpeaker.name.charAt(0).toUpperCase()}
+                  </div>
+                  <h2 className={`text-xl font-bold mb-1 ${theme.textColor}`} style={{ fontFamily: 'var(--font-heading)' }}>
+                    {currentSpeaker.name}
+                  </h2>
+                  <p className={`${theme.textColor} opacity-60 text-sm capitalize`}>
+                    {currentSpeaker.role} • Currently Speaking
+                  </p>
+                  {liveTranscript && (
+                    <p className={`mt-3 text-sm italic opacity-70 ${theme.textColor}`}>🎙️ {liveTranscript}</p>
+                  )}
+                </motion.div>
+              ) : (
+                <div className={`${theme.cardStyle} rounded-3xl p-6 text-center opacity-50`}>
+                  <Volume2 className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  <p className={`text-sm ${theme.textColor}`}>No one is speaking yet</p>
+                </div>
+              )}
+            </div>
+
+            {/* Ideas Stream */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <h3 className={`text-xs uppercase tracking-wider opacity-60 mb-4 ${theme.textColor}`}>Ideas Shared</h3>
+              {ideas.length === 0 ? (
+                <p className={`text-sm opacity-40 ${theme.textColor}`}>No ideas shared yet. The debate will unfold here.</p>
+              ) : (
+                <div className="space-y-4 max-w-3xl">
+                  <AnimatePresence>
+                    {ideas.map(idea => (
+                      <motion.div key={idea.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
+                        className={`${theme.cardStyle} rounded-2xl p-5`}>
+                        <div className="flex items-start justify-between gap-4 mb-3">
+                          <div>
+                            <p className={`font-medium text-sm ${theme.textColor}`}>{idea.speakerName}</p>
+                            <p className={`text-xs ${theme.textColor} opacity-50`}>
+                              {formatTime(Math.floor((Date.now() - idea.timestamp.getTime()) / 1000))} ago
+                            </p>
+                          </div>
+                        </div>
+                        <p className={`${theme.textColor} text-sm mb-4`}>{idea.content}</p>
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => handleIdeaReaction(idea.id, 'agree')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all ${idea.hasUserAgreed ? 'bg-green-500 text-white' : `${theme.cardStyle} hover:bg-white/10`}`}>
+                            <ThumbsUp className={`w-4 h-4 ${idea.hasUserAgreed ? 'fill-current' : ''}`} />
+                            {idea.agreeCount}
+                          </button>
+                          <button onClick={() => handleIdeaReaction(idea.id, 'disagree')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all ${idea.hasUserDisagreed ? 'bg-red-500 text-white' : `${theme.cardStyle} hover:bg-white/10`}`}>
+                            <ThumbsDown className={`w-4 h-4 ${idea.hasUserDisagreed ? 'fill-current' : ''}`} />
+                            {idea.disagreeCount}
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
+
+            {/* ── Bottom Controls ── */}
+            <div className={`${theme.cardStyle} px-6 py-5 border-t ${borderCls}`}>
+              <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+
+                  {/* Listener/Speaker: Hand Raise */}
+                  {(userRole === 'listener' || userRole === 'speaker') && (
+                    <button onClick={handleHandRaise}
+                      className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${handRaised ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`}`}>
+                      <Hand className={`w-5 h-5 ${handRaised ? '' : 'opacity-70'}`} />
+                      {handRaised ? 'Hand Raised' : 'Raise Hand'}
+                    </button>
+                  )}
+
+                  {/* Debater/Speaker: Mic */}
+                  {(userRole === 'debater' || userRole === 'speaker') && (
+                    <button onClick={handleMicToggle}
+                      className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${!micMuted ? 'bg-green-500 text-white' : `${theme.cardStyle} hover:bg-white/10`}`}>
+                      {micMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                      {micMuted ? 'Unmute' : 'Mute'}
+                    </button>
+                  )}
+
+                  {/* Chat toggle */}
+                  <button onClick={() => setChatOpen(o => !o)}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${chatOpen ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`}`}>
+                    <MessageSquare className="w-5 h-5" />
+                    <span className="hidden sm:inline">Chat</span>
+                  </button>
+
+                  {/* Mobile: participants count */}
+                  <div className={`md:hidden flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm ${theme.cardStyle} opacity-70`}>
+                    <Users className="w-4 h-4" />
+                    {participants.length}
+                  </div>
                 </div>
 
-                {/* Chat header */}
-                <div className={`flex items-center justify-between px-3 py-2.5 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                  <span className="text-sm font-semibold flex items-center gap-1.5">
-                    <MessageSquare className="w-4 h-4 text-indigo-400" />
-                    Chat
+                {/* Leave */}
+                <button onClick={onLeave}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white font-medium transition-all hover:scale-105 text-sm">
+                  <LogOut className="w-5 h-5" />
+                  <span className="hidden sm:inline">Leave Discussion</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Chat Panel ── */}
+          <AnimatePresence>
+            {chatOpen && (
+              <motion.div
+                key="chat"
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 300, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className={`flex flex-col overflow-hidden border-l ${borderCls} ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}
+                style={{ minWidth: 0 }}
+              >
+                {/* Header */}
+                <div className={`flex items-center justify-between px-4 py-3 border-b ${borderCls} flex-shrink-0`}>
+                  <span className={`text-sm font-semibold flex items-center gap-1.5 ${theme.textColor}`}>
+                    <MessageSquare className="w-4 h-4 text-indigo-400" /> Chat
                   </span>
-                  <button onClick={() => setChatOpen(false)} className="opacity-40 hover:opacity-70 transition-opacity p-1">
-                    <X className="w-5 h-5 md:w-4 md:h-4" />
+                  <button onClick={() => setChatOpen(false)} className="opacity-40 hover:opacity-70 p-1">
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-                {chatMsgs.length === 0 && (
-                  <p className="text-xs opacity-40 text-center mt-4">No messages yet. Say something!</p>
-                )}
-                {chatMsgs.map(msg => {
-                  const isOwn = msg.user.id === currentUserId;
-                  return (
-                    <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
-                      {!isOwn && (
-                        <span className="text-[10px] opacity-50 mb-0.5 ml-1">{msg.user.name}</span>
-                      )}
-                      <div className={`max-w-[85%] px-3 py-1.5 rounded-2xl text-sm ${isOwn ? msgBubbleOwn : msgBubbleOther} ${msg.pending ? 'opacity-60' : ''}`}>
-                        {msg.message}
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+                  {chatMsgs.length === 0 && (
+                    <p className="text-xs opacity-40 text-center mt-6">No messages yet. Say something!</p>
+                  )}
+                  {chatMsgs.map(msg => {
+                    const isOwn = msg.user.id === currentUserId;
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+                        {!isOwn && <span className="text-[10px] opacity-50 mb-0.5 ml-1">{msg.user.name}</span>}
+                        <div className={`max-w-[85%] px-3 py-1.5 rounded-2xl text-sm ${isOwn ? msgBubbleOwn : msgBubbleOther} ${msg.pending ? 'opacity-60' : ''}`}>
+                          {msg.message}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-                <div ref={chatBottomRef} />
-              </div>
+                    );
+                  })}
+                  <div ref={chatBottomRef} />
+                </div>
 
-              {/* Error */}
-              {chatError && (
-                <p className="text-xs text-red-400 px-3 pb-1">{chatError}</p>
-              )}
+                {chatError && <p className="text-xs text-red-400 px-3 pb-1">{chatError}</p>}
 
                 {/* Input */}
-                <div className={`flex items-center gap-2 px-3 py-2 border-t safe-area-bottom ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={handleChatKey}
+                <div className={`flex items-center gap-2 px-3 py-2.5 border-t ${borderCls} flex-shrink-0`}>
+                  <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={handleChatKey}
                     placeholder="Type a message…"
-                    className={`flex-1 text-sm px-3 py-2 md:py-1.5 rounded-full outline-none ${
-                      isDark ? 'bg-white/10 placeholder:text-white/30 text-white' : 'bg-white border border-gray-200 text-gray-800 placeholder:text-gray-400'
-                    }`}
+                    className={`flex-1 text-sm px-3 py-1.5 rounded-full outline-none ${isDark ? 'bg-white/10 placeholder:text-white/30 text-white' : 'bg-white border border-gray-200 text-gray-800 placeholder:text-gray-400'}`}
                   />
-                  <button
-                    onClick={sendMessage}
-                    disabled={!chatInput.trim() || chatSending}
-                    className="p-2.5 md:p-1.5 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-40 transition-colors"
-                  >
+                  <button onClick={sendMessage} disabled={!chatInput.trim() || chatSending}
+                    className="p-1.5 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-40 transition-colors">
                     <Send className="w-4 h-4" />
                   </button>
                 </div>
               </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
