@@ -40,11 +40,12 @@ export interface Discussion {
   currentSpeaker?: string;
   scheduledTime?: Date;
   startedTime?: Date;
-  duration?: number; // minutes
+  duration?: number;
   hostId: string;
   hostName: string;
   hasUserInterest?: boolean;
   hasUserSaved?: boolean;
+  meetingId?: string; // backend meeting ID for transcription
 }
 
 export interface HandRaiseRequest {

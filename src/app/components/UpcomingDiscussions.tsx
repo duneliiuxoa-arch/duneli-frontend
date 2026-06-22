@@ -86,7 +86,7 @@ export function UpcomingDiscussions({
                 </span>
                 <div className="flex items-center gap-2 text-sm font-medium text-blue-500">
                   <Clock className="w-4 h-4" />
-                  <span>{formatScheduledTime(discussion.scheduledTime!)}</span>
+                  <span>{formatScheduledTime(discussion.scheduledTime)}</span>
                 </div>
               </div>
 
@@ -101,7 +101,7 @@ export function UpcomingDiscussions({
               {/* Details */}
               <div className={`text-sm ${theme.textColor} opacity-60 mb-4 space-y-1`}>
                 <p>Hosted by {discussion.hostName}</p>
-                <p>{formatFullTime(discussion.scheduledTime!)}</p>
+                <p>{formatFullTime(discussion.scheduledTime)}</p>
                 <p>{discussion.duration} minutes · {discussion.language}</p>
               </div>
 

@@ -63,26 +63,26 @@ export function DiscoveryControls({
   return (
     <div className="flex flex-wrap items-center gap-2 sm:gap-4">
       {/* Mode Toggle */}
-      <div className={`${theme.cardStyle} rounded-full p-1 flex items-center gap-1`}>
+      <div className={`${theme.cardStyle} rounded-full p-1 flex items-center gap-1 flex-shrink-0`}>
         <button
           onClick={() => onModeChange('interest')}
-          className={`px-3 py-2 sm:px-6 rounded-full transition-all text-sm sm:text-base ${
+          className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-full transition-all text-sm ${
             mode === 'interest' ? theme.buttonClass : 'hover:bg-white/10'
           }`}
         >
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <TrendingUp className="w-4 h-4" />
+          <div className="flex items-center gap-1.5">
+            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Interest</span>
           </div>
         </button>
         <button
           onClick={() => onModeChange('categories')}
-          className={`px-3 py-2 sm:px-6 rounded-full transition-all text-sm sm:text-base ${
+          className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-full transition-all text-sm ${
             mode === 'categories' ? theme.buttonClass : 'hover:bg-white/10'
           }`}
         >
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <Grid3x3 className="w-4 h-4" />
+          <div className="flex items-center gap-1.5">
+            <Grid3x3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Categories</span>
           </div>
         </button>

@@ -44,6 +44,7 @@ function mapTopic(t: any): Discussion {
     hostId:          t.host?.id   || '',
     hostName:        t.host?.name || 'Unknown',
     hasUserInterest: t.hasUserVoted || false,
+    meetingId:       t.meeting?.id,
   };
 }
 
