@@ -38,9 +38,11 @@ function mapTopic(t: any): Discussion {
     || t.host?.name
     || 'Unknown';
 
-  // Listener count: activeAttendees = real-time users still in session (leftAt IS NULL)
-  // Fallback to meeting._count.attendees (total ever joined)
-  const listenerCount = t.activeAttendees ?? t.meeting?._count?.attendees ?? undefined;
+  // Listener count: only use activeAttendees (leftAt IS NULL = currently in session)
+  // Do NOT fallback to _count.attendees — that's total ever joined, not current
+  const listenerCount = (typeof t.activeAttendees === 'number' && t.activeAttendees > 0)
+    ? t.activeAttendees
+    : undefined;
 
   return {
     id:              t.id,
