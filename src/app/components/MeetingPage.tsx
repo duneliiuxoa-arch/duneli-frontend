@@ -45,6 +45,9 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const [participants, setParticipants]     = useState<Participant[]>([]);
   const [agoraError, setAgoraError]         = useState<string | null>(null);
   const [ideas, setIdeas]                   = useState<Idea[]>([]);
+  const [ideaInput, setIdeaInput]           = useState('');
+  const [ideaCooldown, setIdeaCooldown]     = useState(0); // seconds remaining
+  const ideaCooldownRef                     = useRef<ReturnType<typeof setInterval> | null>(null);
   const [chatOpen, setChatOpen]             = useState(false);
   const [chatMsgs, setChatMsgs]             = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput]           = useState('');
@@ -291,7 +294,42 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   };
 
   const currentSpeaker  = participants.find(p => p.isSpeaking);
-  const raisedHands     = participants.filter(p => (p as any).handRaised);
+  // Deduplicate participants by id
+  const uniqueParticipants = participants.filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i);
+  const raisedHands     = uniqueParticipants.filter(p => (p as any).handRaised);
+  const canShareIdea    = userRole === 'speaker' || userRole === 'debater';
+
+  // ── Share Idea ────────────────────────────────────────────
+  const submitIdea = () => {
+    const text = ideaInput.trim();
+    if (!text || ideaCooldown > 0 || !canShareIdea) return;
+    const newIdea: Idea = {
+      id: `idea-${Date.now()}`,
+      speakerId: currentUserId || 'me',
+      speakerName: userName,
+      content: text,
+      timestamp: new Date(),
+      agreeCount: 0,
+      disagreeCount: 0,
+    };
+    setIdeas(prev => [...prev, newIdea]);
+    setIdeaInput('');
+    // Start 5 min cooldown
+    setIdeaCooldown(300);
+    ideaCooldownRef.current = setInterval(() => {
+      setIdeaCooldown(prev => {
+        if (prev <= 1) {
+          clearInterval(ideaCooldownRef.current!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const handleIdeaKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitIdea(); }
+  };
   const msgBubbleOwn    = isDark ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white';
   const msgBubbleOther  = isDark ? 'bg-white/10 text-white'   : 'bg-gray-100 text-gray-800';
   const borderCls       = isDark ? 'border-white/10' : 'border-gray-200';
@@ -443,41 +481,202 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
               )}
             </div>
 
-            {/* Ideas Stream */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <h3 className={`text-xs uppercase tracking-wider opacity-60 mb-4 ${theme.textColor}`}>Ideas Shared</h3>
-              {ideas.length === 0 ? (
-                <p className={`text-sm opacity-40 ${theme.textColor}`}>No ideas shared yet. The debate will unfold here.</p>
-              ) : (
-                <div className="space-y-4 max-w-3xl">
-                  <AnimatePresence>
-                    {ideas.map(idea => (
-                      <motion.div key={idea.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-                        className={`${theme.cardStyle} rounded-2xl p-5`}>
-                        <div className="flex items-start justify-between gap-4 mb-3">
-                          <div>
-                            <p className={`font-medium text-sm ${theme.textColor}`}>{idea.speakerName}</p>
-                            <p className={`text-xs ${theme.textColor} opacity-50`}>
-                              {formatTime(Math.floor((Date.now() - idea.timestamp.getTime()) / 1000))} ago
-                            </p>
+            {/* Ideas Stream + Input */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className={`px-6 pt-4 pb-3 flex items-center justify-between border-b ${borderCls} flex-shrink-0`}>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs uppercase tracking-wider opacity-60 font-semibold ${theme.textColor}`}>Ideas Shared</span>
+                  {ideas.length > 0 && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDark ? 'bg-white/10 text-white/50' : 'bg-gray-100 text-gray-500'}`}>
+                      {ideas.length}
+                    </span>
+                  )}
+                </div>
+                {/* Cooldown badge in header */}
+                {canShareIdea && ideaCooldown > 0 && (
+                  <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold ${
+                    ideaCooldown <= 30
+                      ? 'bg-green-500/15 text-green-400 border border-green-500/25'
+                      : isDark ? 'bg-yellow-500/12 text-yellow-400 border border-yellow-500/20' : 'bg-yellow-50 text-yellow-600 border border-yellow-200'
+                  }`}>
+                    <Clock className="w-3 h-3 flex-shrink-0" />
+                    {Math.floor(ideaCooldown / 60)}:{(ideaCooldown % 60).toString().padStart(2, '0')}
+                  </div>
+                )}
+                {/* Listener badge */}
+                {!canShareIdea && (
+                  <span className={`text-[10px] px-2.5 py-1 rounded-full font-medium ${isDark ? 'bg-white/6 text-white/40' : 'bg-gray-100 text-gray-400'}`}>
+                    👁 Read-only
+                  </span>
+                )}
+              </div>
+
+              {/* Ideas list — chat style */}
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+                {ideas.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-3 py-14 opacity-40 select-none">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isDark ? 'bg-white/8' : 'bg-gray-100'}`}>
+                      <Volume2 className="w-5 h-5" />
+                    </div>
+                    <div className="text-center">
+                      <p className={`text-sm font-medium ${theme.textColor}`}>No ideas shared yet</p>
+                      <p className="text-xs mt-1">The debate will unfold here.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <AnimatePresence initial={false}>
+                    {ideas.map(idea => {
+                      const isOwn = idea.speakerId === currentUserId;
+                      const secondsAgo = Math.floor((Date.now() - idea.timestamp.getTime()) / 1000);
+                      const timeLabel = secondsAgo < 60
+                        ? `${secondsAgo}s ago`
+                        : `${Math.floor(secondsAgo / 60)}m ago`;
+
+                      return (
+                        <motion.div key={idea.id}
+                          initial={{ opacity: 0, y: 14, scale: 0.97 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                          className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}
+                        >
+                          {/* Name + time */}
+                          <div className={`flex items-center gap-2 mb-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                              isDark ? 'bg-indigo-500/30 text-indigo-300' : 'bg-indigo-100 text-indigo-600'
+                            }`}>
+                              {idea.speakerName.charAt(0).toUpperCase()}
+                            </div>
+                            <span className={`text-[11px] font-semibold ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+                              {isOwn ? 'You' : idea.speakerName}
+                            </span>
+                            <span className={`text-[10px] ${isDark ? 'text-white/25' : 'text-gray-300'}`}>{timeLabel}</span>
+                          </div>
+
+                          {/* Bubble */}
+                          <div className={`max-w-[82%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                            isOwn
+                              ? 'bg-indigo-500 text-white rounded-tr-md'
+                              : isDark
+                                ? 'bg-white/10 text-white rounded-tl-md border border-white/8'
+                                : 'bg-white text-gray-800 rounded-tl-md border border-gray-200'
+                          }`}>
+                            {idea.content}
+                          </div>
+
+                          {/* Agree / Disagree reactions */}
+                          <div className={`flex items-center gap-1.5 mt-2 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                            <button
+                              onClick={() => handleIdeaReaction(idea.id, 'agree')}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                                idea.hasUserAgreed
+                                  ? 'bg-green-500 text-white shadow-sm'
+                                  : isDark ? 'bg-white/8 hover:bg-white/14 text-white/50' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'
+                              }`}>
+                              <ThumbsUp className={`w-3 h-3 ${idea.hasUserAgreed ? 'fill-current' : ''}`} />
+                              <span>{idea.agreeCount}</span>
+                            </button>
+                            <button
+                              onClick={() => handleIdeaReaction(idea.id, 'disagree')}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                                idea.hasUserDisagreed
+                                  ? 'bg-red-500 text-white shadow-sm'
+                                  : isDark ? 'bg-white/8 hover:bg-white/14 text-white/50' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'
+                              }`}>
+                              <ThumbsDown className={`w-3 h-3 ${idea.hasUserDisagreed ? 'fill-current' : ''}`} />
+                              <span>{idea.disagreeCount}</span>
+                            </button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                )}
+              </div>
+
+              {/* ── Idea Input / Cooldown — speaker & debater only ── */}
+              {canShareIdea && (
+                <div className={`px-4 pb-4 pt-2 border-t ${borderCls} flex-shrink-0`}>
+                  <AnimatePresence mode="wait">
+                    {ideaCooldown > 0 ? (
+                      /* Cooldown locked state */
+                      <motion.div key="cooldown"
+                        initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${
+                          isDark ? 'bg-white/5 border border-white/8' : 'bg-gray-50 border border-gray-200'
+                        }`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          isDark ? 'bg-white/8' : 'bg-gray-200'
+                        }`}>
+                          <Clock className={`w-4 h-4 ${isDark ? 'text-white/40' : 'text-gray-400'}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-medium ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+                            Next idea available in
+                          </p>
+                          {/* Progress bar */}
+                          <div className={`mt-1.5 h-1 rounded-full overflow-hidden ${isDark ? 'bg-white/8' : 'bg-gray-200'}`}>
+                            <motion.div
+                              className={`h-full rounded-full ${ideaCooldown <= 30 ? 'bg-green-400' : 'bg-indigo-400'}`}
+                              style={{ width: `${((300 - ideaCooldown) / 300) * 100}%` }}
+                              transition={{ duration: 1, ease: 'linear' }}
+                            />
                           </div>
                         </div>
-                        <p className={`${theme.textColor} text-sm mb-4`}>{idea.content}</p>
-                        <div className="flex items-center gap-3">
-                          <button onClick={() => handleIdeaReaction(idea.id, 'agree')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all ${idea.hasUserAgreed ? 'bg-green-500 text-white' : `${theme.cardStyle} hover:bg-white/10`}`}>
-                            <ThumbsUp className={`w-4 h-4 ${idea.hasUserAgreed ? 'fill-current' : ''}`} />
-                            {idea.agreeCount}
-                          </button>
-                          <button onClick={() => handleIdeaReaction(idea.id, 'disagree')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all ${idea.hasUserDisagreed ? 'bg-red-500 text-white' : `${theme.cardStyle} hover:bg-white/10`}`}>
-                            <ThumbsDown className={`w-4 h-4 ${idea.hasUserDisagreed ? 'fill-current' : ''}`} />
-                            {idea.disagreeCount}
-                          </button>
-                        </div>
+                        <span className={`text-lg font-mono font-bold flex-shrink-0 tabular-nums ${
+                          ideaCooldown <= 30
+                            ? 'text-green-400'
+                            : isDark ? 'text-white/70' : 'text-gray-700'
+                        }`}>
+                          {Math.floor(ideaCooldown / 60)}:{(ideaCooldown % 60).toString().padStart(2, '0')}
+                        </span>
                       </motion.div>
-                    ))}
+                    ) : (
+                      /* Active input */
+                      <motion.div key="input"
+                        initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                        className={`flex items-end gap-2 px-3 py-2.5 rounded-2xl ${
+                          isDark
+                            ? 'bg-white/8 border border-white/12 focus-within:border-indigo-500/50'
+                            : 'bg-white border border-gray-200 shadow-sm focus-within:border-indigo-300'
+                        } transition-colors`}>
+                        <textarea
+                          value={ideaInput}
+                          onChange={e => setIdeaInput(e.target.value)}
+                          onKeyDown={handleIdeaKey}
+                          placeholder="Share an idea with the room…"
+                          rows={2}
+                          style={{ resize: 'none' }}
+                          className={`flex-1 text-sm outline-none bg-transparent leading-relaxed pt-0.5 ${
+                            isDark ? 'text-white placeholder:text-white/30' : 'text-gray-800 placeholder:text-gray-400'
+                          }`}
+                        />
+                        <button
+                          onClick={submitIdea}
+                          disabled={!ideaInput.trim()}
+                          className="p-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white disabled:opacity-30 transition-all flex-shrink-0 mb-0.5">
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </motion.div>
+                    )}
                   </AnimatePresence>
+                  <p className={`text-[10px] mt-2 text-center font-medium ${isDark ? 'text-white/20' : 'text-gray-300'}`}>
+                    Speakers &amp; Debaters · 1 idea per 5 minutes
+                  </p>
+                </div>
+              )}
+
+              {/* Listener: locked footer */}
+              {!canShareIdea && (
+                <div className={`px-4 py-3 border-t ${borderCls} flex-shrink-0`}>
+                  <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl ${
+                    isDark ? 'bg-white/4 border border-white/6' : 'bg-gray-50 border border-gray-200'
+                  }`}>
+                    <Headphones className={`w-4 h-4 flex-shrink-0 ${isDark ? 'text-white/25' : 'text-gray-300'}`} />
+                    <p className={`text-xs ${isDark ? 'text-white/30' : 'text-gray-400'}`}>
+                      Idea sharing is for speakers &amp; debaters only
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
