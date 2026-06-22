@@ -325,12 +325,20 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     setParticipants(prev => prev.map(p => p.id === agoraUid || p.id === userId ? { ...p, handRaised: next } : p));
   };
 
+  const [skipTimer, setSkipTimer] = useState<number | null>(null);
+  const skipTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // ── Start speaking ────────────────────────────────────────
   const startSpeaking = () => {
     const userId = currentUserId || userIdRef.current;
     const agoraUid = String(toAgoraUid(userId));
+    // Clear skip timer if user clicked manually
+    if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+    setSkipTimer(null);
     setIsSpeaking(true);
     setHandRaised(false);
+    // Remove self from queue
+    setSpeakingQueue(prev => prev.filter(q => q.userId !== userId));
     setSpeakerTimeLeft(SPEAK_LIMIT_SEC);
     toggleMicrophone(true).catch(() => {});
     setMicMuted(false);
@@ -347,15 +355,45 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const endSpeaking = () => {
     const userId = currentUserId || userIdRef.current;
     if (speakingTimerRef.current) clearInterval(speakingTimerRef.current);
+    if (skipTimerRef.current) clearInterval(skipTimerRef.current);
     setIsSpeaking(false);
     setHandRaised(false);
     setSpeakerTimeLeft(null);
+    setSkipTimer(null);
     setMicMuted(true);
+    // Remove self from queue on end
+    setSpeakingQueue(prev => prev.filter(q => q.userId !== userId));
     toggleMicrophone(false).catch(() => {});
     if (isTranscribing) transcriptionService.stop().then(() => { setIsTranscribing(false); setLiveTranscript(''); });
     realtimeRef.current?.send({ type: 'broadcast', event: 'queue_speaking_end', payload: { userId } });
     realtimeRef.current?.track({ name: userName, role: userRole, agoraUid: String(toAgoraUid(userId)), userId, handRaised: false });
   };
+
+  // ── 10 sec auto-skip when it's your turn ──────────────────
+  useEffect(() => {
+    const userId = currentUserId || userIdRef.current;
+    const isMyTurn = speakingQueue.length > 0 && speakingQueue[0].userId === userId && !isSpeaking;
+    if (isMyTurn) {
+      setSkipTimer(10);
+      skipTimerRef.current = setInterval(() => {
+        setSkipTimer(prev => {
+          if (prev === null || prev <= 1) {
+            clearInterval(skipTimerRef.current!);
+            // Auto-skip: remove from queue, lower hand
+            setHandRaised(false);
+            setSpeakingQueue(q => q.filter(x => x.userId !== userId));
+            realtimeRef.current?.send({ type: 'broadcast', event: 'queue_leave', payload: { userId } });
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+      setSkipTimer(null);
+    }
+    return () => { if (skipTimerRef.current) clearInterval(skipTimerRef.current); };
+  }, [speakingQueue[0]?.userId, isSpeaking, currentUserId]);
 
   // ── Ideas realtime sync ─────────────────────────────────
   // Fetch existing ideas from DB on mount
@@ -882,19 +920,28 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                     </button>
                   )}
 
-                  {/* "Your Turn!" button — appears when user is first in queue & not yet speaking */}
+                  {/* "Your Turn!" button — pulsing + 10 sec skip countdown */}
                   {speakingQueue.length > 0 &&
                    speakingQueue[0].userId === (currentUserId || userIdRef.current) &&
                    !isSpeaking && (
-                    <motion.button
-                      onClick={startSpeaking}
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: [1, 1.05, 1], opacity: 1 }}
-                      transition={{ repeat: Infinity, duration: 1.4 }}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-green-500 text-white font-bold text-sm shadow-lg shadow-green-500/30">
-                      <Mic className="w-5 h-5" />
-                      Your Turn — Speak Now!
-                    </motion.button>
+                    <div className="flex items-center gap-2">
+                      <motion.button
+                        onClick={startSpeaking}
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: [1, 1.05, 1], opacity: 1 }}
+                        transition={{ repeat: Infinity, duration: 1.4 }}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-green-500 text-white font-bold text-sm shadow-lg shadow-green-500/30">
+                        <Mic className="w-5 h-5" />
+                        Speak Now!
+                      </motion.button>
+                      {skipTimer !== null && (
+                        <div className={`px-3 py-2 rounded-xl text-xs font-bold ${
+                          skipTimer <= 3 ? 'bg-red-500 text-white' : isDark ? 'bg-white/10 text-white/60' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          Skip in {skipTimer}s
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* Speaking badge + End button */}
