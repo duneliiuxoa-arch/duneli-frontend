@@ -301,7 +301,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
 
       {/* ── Top Bar ── */}
       <div className={`${theme.cardStyle} px-6 py-4 border-b ${borderCls}`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 w-full">
           {/* Live badge + topic */}
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <div className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-full font-medium flex-shrink-0 text-sm">
@@ -344,7 +344,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
       )}
 
       {/* ── Main Layout ── */}
-      <div className="flex-1 flex overflow-hidden max-w-7xl mx-auto w-full">
+      <div className="flex-1 flex overflow-hidden w-full">
 
         {/* ── Left Panel — Queue & Participants ── */}
         <div className={`w-72 flex-shrink-0 ${theme.cardStyle} p-6 overflow-y-auto border-r ${borderCls} hidden md:block`}>
@@ -491,7 +491,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
 
             {/* ── Bottom Controls ── */}
             <div className={`${theme.cardStyle} px-6 py-5 border-t ${borderCls}`}>
-              <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 w-full">
                 <div className="flex items-center gap-3">
 
                   {/* Listener/Speaker: Hand Raise */}
