@@ -57,9 +57,11 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
 
   const realtimeRef    = useRef<any>(null);
+  const ideasChannelRef = useRef<any>(null);
   const speakerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatBottomRef  = useRef<HTMLDivElement>(null);
+  const ideasBottomRef  = useRef<HTMLDivElement>(null);
   const meetingIdRef   = useRef('');
   const userIdRef      = useRef('');
   const anonIdRef      = useRef('');
@@ -95,6 +97,10 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMsgs]);
+
+  useEffect(() => {
+    ideasBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [ideas]);
 
   // ── Send chat ─────────────────────────────────────────────
   const sendMessage = async () => {
@@ -284,13 +290,97 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     ));
   };
 
-  // ── Idea reactions ────────────────────────────────────────
-  const handleIdeaReaction = (ideaId: string, type: 'agree' | 'disagree') => {
-    setIdeas(ideas.map(idea => {
+  // ── Ideas realtime sync ─────────────────────────────────
+  // Fetch existing ideas from DB on mount
+  const fetchIdeas = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/discussions/${discussion.id}/ideas`, {
+        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setIdeas((data.ideas || []).map((i: any) => ({
+        id: i.id,
+        speakerId: i.userId,
+        speakerName: i.user?.name || i.user?.anonymousId || 'Speaker',
+        content: i.content,
+        timestamp: new Date(i.createdAt),
+        agreeCount: i.agreeCount || 0,
+        disagreeCount: i.disagreeCount || 0,
+        hasUserAgreed: i.hasUserAgreed || false,
+        hasUserDisagreed: i.hasUserDisagreed || false,
+      })));
+    } catch { /* silent */ }
+  }, [discussion.id, sessionToken]);
+
+  useEffect(() => {
+    if (sessionToken) fetchIdeas();
+  }, [fetchIdeas, sessionToken]);
+
+  // Subscribe to idea broadcasts via Supabase channel
+  useEffect(() => {
+    const ch = supabase.channel(`ideas:${discussion.id}`, {
+      config: { broadcast: { self: false } },
+    });
+    ideasChannelRef.current = ch;
+    ch
+      .on('broadcast', { event: 'new_idea' }, ({ payload }: any) => {
+        setIdeas(prev => {
+          if (prev.find(i => i.id === payload.id)) return prev;
+          return [...prev, {
+            id: payload.id,
+            speakerId: payload.speakerId,
+            speakerName: payload.speakerName,
+            content: payload.content,
+            timestamp: new Date(payload.timestamp),
+            agreeCount: 0,
+            disagreeCount: 0,
+          }];
+        });
+      })
+      .on('broadcast', { event: 'idea_reaction' }, ({ payload }: any) => {
+        setIdeas(prev => prev.map(idea => {
+          if (idea.id !== payload.ideaId) return idea;
+          return {
+            ...idea,
+            agreeCount: payload.agreeCounts ?? idea.agreeCount,
+            disagreeCount: payload.disagreeCounts ?? idea.disagreeCount,
+          };
+        }));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [discussion.id]);
+
+  // ── Idea reactions (API + broadcast) ────────────────────
+  const handleIdeaReaction = async (ideaId: string, type: 'agree' | 'disagree') => {
+    let newAgree = 0, newDisagree = 0;
+    setIdeas(prev => prev.map(idea => {
       if (idea.id !== ideaId) return idea;
-      if (type === 'agree') return { ...idea, hasUserAgreed: !idea.hasUserAgreed, hasUserDisagreed: false, agreeCount: idea.hasUserAgreed ? idea.agreeCount - 1 : idea.agreeCount + 1, disagreeCount: idea.hasUserDisagreed ? idea.disagreeCount - 1 : idea.disagreeCount };
-      return { ...idea, hasUserDisagreed: !idea.hasUserDisagreed, hasUserAgreed: false, disagreeCount: idea.hasUserDisagreed ? idea.disagreeCount - 1 : idea.disagreeCount + 1, agreeCount: idea.hasUserAgreed ? idea.agreeCount - 1 : idea.agreeCount };
+      const updated = type === 'agree'
+        ? { ...idea, hasUserAgreed: !idea.hasUserAgreed, hasUserDisagreed: false,
+            agreeCount: idea.hasUserAgreed ? idea.agreeCount - 1 : idea.agreeCount + 1,
+            disagreeCount: idea.hasUserDisagreed ? idea.disagreeCount - 1 : idea.disagreeCount }
+        : { ...idea, hasUserDisagreed: !idea.hasUserDisagreed, hasUserAgreed: false,
+            disagreeCount: idea.hasUserDisagreed ? idea.disagreeCount - 1 : idea.disagreeCount + 1,
+            agreeCount: idea.hasUserAgreed ? idea.agreeCount - 1 : idea.agreeCount };
+      newAgree = updated.agreeCount;
+      newDisagree = updated.disagreeCount;
+      return updated;
     }));
+    // Persist
+    if (sessionToken) {
+      fetch(`${API_URL}/api/discussions/${discussion.id}/ideas/${ideaId}/react`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ type }),
+      }).catch(() => {});
+    }
+    // Broadcast to room
+    ideasChannelRef.current?.send({
+      type: 'broadcast', event: 'idea_reaction',
+      payload: { ideaId, agreeCounts: newAgree, disagreeCounts: newDisagree },
+    });
   };
 
   const currentSpeaker  = participants.find(p => p.isSpeaking);
@@ -300,31 +390,41 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const canShareIdea    = userRole === 'speaker' || userRole === 'debater';
 
   // ── Share Idea ────────────────────────────────────────────
-  const submitIdea = () => {
+  const submitIdea = async () => {
     const text = ideaInput.trim();
-    if (!text || ideaCooldown > 0 || !canShareIdea) return;
-    const newIdea: Idea = {
-      id: `idea-${Date.now()}`,
-      speakerId: currentUserId || 'me',
-      speakerName: userName,
-      content: text,
-      timestamp: new Date(),
-      agreeCount: 0,
-      disagreeCount: 0,
-    };
-    setIdeas(prev => [...prev, newIdea]);
+    if (!text || ideaCooldown > 0 || !canShareIdea || !sessionToken) return;
     setIdeaInput('');
-    // Start 5 min cooldown
     setIdeaCooldown(300);
     ideaCooldownRef.current = setInterval(() => {
       setIdeaCooldown(prev => {
-        if (prev <= 1) {
-          clearInterval(ideaCooldownRef.current!);
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(ideaCooldownRef.current!); return 0; }
         return prev - 1;
       });
     }, 1000);
+    try {
+      const res = await fetch(`${API_URL}/api/discussions/${discussion.id}/ideas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ content: text }),
+      });
+      const data = res.ok ? await res.json() : {};
+      const newIdea: Idea = {
+        id: data.idea?.id || `idea-${Date.now()}`,
+        speakerId: currentUserId || 'me',
+        speakerName: userName,
+        content: text,
+        timestamp: new Date(),
+        agreeCount: 0,
+        disagreeCount: 0,
+      };
+      setIdeas(prev => [...prev, newIdea]);
+      ideasChannelRef.current?.send({
+        type: 'broadcast', event: 'new_idea',
+        payload: { id: newIdea.id, speakerId: newIdea.speakerId,
+          speakerName: newIdea.speakerName, content: newIdea.content,
+          timestamp: newIdea.timestamp.toISOString() },
+      });
+    } catch { /* silent */ }
   };
 
   const handleIdeaKey = (e: React.KeyboardEvent) => {
@@ -512,8 +612,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                 )}
               </div>
 
-              {/* Ideas list — chat style */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+              {/* Ideas list — chat style, visible to ALL roles */}
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4 min-h-0">
                 {ideas.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center gap-3 py-14 opacity-40 select-none">
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isDark ? 'bg-white/8' : 'bg-gray-100'}`}>
@@ -592,6 +692,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                     })}
                   </AnimatePresence>
                 )}
+                <div ref={ideasBottomRef} />
               </div>
 
               {/* ── Idea Input / Cooldown — speaker & debater only ── */}
