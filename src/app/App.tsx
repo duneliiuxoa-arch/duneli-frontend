@@ -30,19 +30,30 @@ function mapTopic(t: any): Discussion {
     if (t.meeting.status === 'SCHEDULED') status = 'live';
     else if (t.meeting.status === 'COMPLETED') status = 'ended';
   }
+
+  // Host name: backend returns createdBy, not host
+  const hostName = t.createdBy?.name
+    || t.createdBy?.anonymousId
+    || t.host?.name
+    || 'Unknown';
+
+  // Listener count: activeAttendees = real-time users still in session (leftAt IS NULL)
+  // Fallback to meeting._count.attendees (total ever joined)
+  const listenerCount = t.activeAttendees ?? t.meeting?._count?.attendees ?? undefined;
+
   return {
     id:              t.id,
     title:           t.title,
     category:        (t.category as Discussion['category']) || 'Technology',
     language:        (t.language as Discussion['language'])  || 'English',
     status,
-    interestCount:   t.voteCount  || 0,
-    listenerCount:   t.meeting?.attendeeCount,
-    speakerCount:    undefined,
+    interestCount:   t.voteCount ?? t.topicScore?.voteCount ?? 0,
+    listenerCount,
+    speakerCount:    undefined, // comes from Agora presence, not DB
     scheduledTime:   t.meeting?.meetingDate ? new Date(t.meeting.meetingDate) : undefined,
     startedTime:     status === 'live' && t.meeting?.meetingDate ? new Date(t.meeting.meetingDate) : undefined,
-    hostId:          t.host?.id   || '',
-    hostName:        t.host?.name || 'Unknown',
+    hostId:          t.createdBy?.id   || t.host?.id   || '',
+    hostName,
     hasUserInterest: t.hasUserVoted || false,
     meetingId:       t.meeting?.id,
   };

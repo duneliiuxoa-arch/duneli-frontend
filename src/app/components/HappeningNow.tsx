@@ -110,14 +110,18 @@ export function HappeningNow({
               </div>
 
               {/* Stats */}
-              <div className={`flex items-center gap-6 mb-4 ${theme.textColor} opacity-70`}>
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  <span className="text-sm">{discussion.listenerCount} listening</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">{discussion.speakerCount} speaking</span>
-                </div>
+              <div className={`flex items-center gap-4 sm:gap-6 mb-3 sm:mb-4 ${theme.textColor} opacity-70`}>
+                {discussion.listenerCount !== undefined && (
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    <span className="text-sm">{discussion.listenerCount} listening</span>
+                  </div>
+                )}
+                {discussion.speakerCount !== undefined && discussion.speakerCount > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{discussion.speakerCount} speaking</span>
+                  </div>
+                )}
               </div>
 
               {/* Current Speaker */}
