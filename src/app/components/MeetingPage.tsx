@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Theme, Role, Discussion, Participant, Idea } from '../types';
 import { themes } from '../config/themes';
 import { motion, AnimatePresence } from 'motion/react';
+import { MicVisualizer } from './MicVisualizer';
 import {
   joinAgoraChannel,
   leaveAgoraChannel,
@@ -674,10 +675,11 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                     <p className="text-xs opacity-60 capitalize">{p.role}</p>
                   </div>
                   {p.isSpeaking && (
-                    <span className="relative flex h-2 w-2 flex-shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
-                    </span>
+                    <MicVisualizer
+                      isMuted={p.id === (currentUserId || userIdRef.current) ? micMuted : false}
+                      isDark={isDark}
+                      size="sm"
+                    />
                   )}
                 </div>
               ))}
@@ -700,11 +702,19 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                   <h2 className={`text-xl font-bold mb-1 ${theme.textColor}`} style={{ fontFamily: 'var(--font-heading)' }}>
                     {currentSpeaker.name}
                   </h2>
-                  <p className={`${theme.textColor} opacity-60 text-sm capitalize`}>
+                  <p className={`${theme.textColor} opacity-60 text-sm capitalize mb-3`}>
                     {currentSpeaker.role} • Currently Speaking
                   </p>
+                  {/* Mic visualizer on stage — shows whose mic is live */}
+                  <div className="flex justify-center mb-2">
+                    <MicVisualizer
+                      isMuted={currentSpeaker.id === (currentUserId || userIdRef.current) ? micMuted : false}
+                      isDark={isDark}
+                      size="lg"
+                    />
+                  </div>
                   {liveTranscript && (
-                    <p className={`mt-3 text-sm italic opacity-70 ${theme.textColor}`}>🎙️ {liveTranscript}</p>
+                    <p className={`mt-2 text-sm italic opacity-70 ${theme.textColor}`}>🎙️ {liveTranscript}</p>
                   )}
                 </motion.div>
               ) : (
@@ -973,12 +983,16 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                     </div>
                   )}
 
-                  {/* Debater/Speaker: Mic */}
+                  {/* Debater/Speaker: Mic button with live visualizer */}
                   {(userRole === 'debater' || userRole === 'speaker') && (
                     <button onClick={handleMicToggle}
-                      className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${!micMuted ? 'bg-green-500 text-white' : `${theme.cardStyle} hover:bg-white/10`}`}>
-                      {micMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                      {micMuted ? 'Unmute' : 'Mute'}
+                      className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${
+                        !micMuted
+                          ? 'bg-green-500/15 border border-green-500/40 text-green-400'
+                          : `${theme.cardStyle} hover:bg-white/10`
+                      }`}>
+                      <MicVisualizer isMuted={micMuted} isDark={isDark} size="sm" />
+                      <span>{micMuted ? 'Unmute' : 'Mute'}</span>
                     </button>
                   )}
 
