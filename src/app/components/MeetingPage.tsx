@@ -707,8 +707,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                   <p className={`${theme.textColor} opacity-60 text-sm capitalize mb-3`}>
                     {currentSpeaker.role} • Currently Speaking
                   </p>
-                  {/* Mic visualizer on stage — shows whose mic is live */}
-                  <div className="flex justify-center mb-2">
+                  {/* Stage mic visualizer — lg size, centered */}
+                  <div className="flex justify-center mt-1 mb-1">
                     <MicVisualizer
                       isMuted={currentSpeaker.id === (currentUserId || userIdRef.current) ? micMuted : false}
                       isDark={isDark}
@@ -984,11 +984,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                       </div>
                       {/* Mic mute/unmute only while actively speaking */}
                       <button onClick={handleMicToggle}
-                        className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${
-                          !micMuted
-                            ? 'bg-green-500/15 border border-green-500/40 text-green-400'
-                            : `${theme.cardStyle} hover:bg-white/10`
-                        }`}>
+                        className={`flex items-center gap-2 rounded-full font-medium transition-all text-sm`}
+                        title={micMuted ? 'Unmute' : 'Mute'}>
                         <MicVisualizer isMuted={micMuted} isDark={isDark} size="sm" />
                       </button>
                       <button onClick={endSpeaking}
@@ -1000,15 +997,14 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
 
                   {/* Debater: Mic always available (no queue needed) */}
                   {userRole === 'debater' && (
-                    <button onClick={handleMicToggle}
-                      className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${
-                        !micMuted
-                          ? 'bg-green-500/15 border border-green-500/40 text-green-400'
-                          : `${theme.cardStyle} hover:bg-white/10`
-                      }`}>
-                      <MicVisualizer isMuted={micMuted} isDark={isDark} size="sm" />
-                      <span>{micMuted ? 'Unmute' : 'Mute'}</span>
-                    </button>
+                    <div className="flex flex-col items-center gap-1">
+                      <button onClick={handleMicToggle} title={micMuted ? 'Unmute mic' : 'Mute mic'}>
+                        <MicVisualizer isMuted={micMuted} isDark={isDark} size="sm" />
+                      </button>
+                      <span className={`text-[9px] font-semibold tracking-wide ${micMuted ? (isDark ? 'text-white/30' : 'text-gray-400') : 'text-green-400'}`}>
+                        {micMuted ? 'MUTED' : 'LIVE'}
+                      </span>
+                    </div>
                   )}
 
                   {/* Chat toggle */}
