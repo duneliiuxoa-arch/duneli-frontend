@@ -1,243 +1,274 @@
-// MicVisualizer.tsx — Google Meet style
-// - Circular button with mic icon in center
-// - Animated ripple rings when active (like Google Meet)
-// - 5 bars grow from center of the circle
-// - Smooth transitions, glow on loud input
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { Mic, MicOff } from 'lucide-react';
+// MicVisualizer.tsx — Canvas-based, fluid wave animation
+import { useEffect, useRef, useState } from 'react';
+import { MicOff } from 'lucide-react';
 
 interface Props {
   isMuted: boolean;
   isDark: boolean;
   size?: 'sm' | 'md' | 'lg';
-  onClick?: () => void; // optional — make it clickable
+  onClick?: () => void;
 }
 
-const BAR_COUNT = 5;
-const SMOOTHING  = 0.82;
-
-// Heights for each bar at rest (idle breathing animation)
-const IDLE_HEIGHTS = [0.25, 0.45, 0.6, 0.45, 0.25];
-
 export function MicVisualizer({ isMuted, isDark, size = 'md', onClick }: Props) {
-  const [volumes, setVolumes] = useState<number[]>(Array(BAR_COUNT).fill(0));
-  const [avgVol,  setAvgVol]  = useState(0); // 0-1, drives ripple scale
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
   const analyserRef  = useRef<AnalyserNode | null>(null);
   const streamRef    = useRef<MediaStream | null>(null);
-  const animFrameRef = useRef<number>(0);
-  const contextRef   = useRef<AudioContext | null>(null);
-  const idleRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ctxAudioRef  = useRef<AudioContext | null>(null);
+  const animRef      = useRef<number>(0);
+  const volRef       = useRef(0);     // smoothed volume 0-1
+  const phaseRef     = useRef(0);     // wave phase for idle breathing
 
-  // ── Idle breathing animation (no mic data) ────────────────
-  const startIdle = useCallback((active: { v: boolean }) => {
-    let t = 0;
-    idleRef.current = setInterval(() => {
-      if (!active.v) { clearInterval(idleRef.current!); return; }
-      const wave = Math.abs(Math.sin(t * 0.9));
-      setVolumes(IDLE_HEIGHTS.map((h, i) =>
-        h * 0.35 + Math.abs(Math.sin(t + i * 0.7)) * 0.22
-      ));
-      setAvgVol(wave * 0.3);
-      t += 0.12;
-    }, 50);
-  }, []);
+  const D = { sm: 52, md: 72, lg: 100 }[size];
+  const R = D / 2;
 
+  // ── Accent: indigo/violet gradient (not green) ────────────
+  const C1 = '#818cf8'; // indigo-400
+  const C2 = '#a78bfa'; // violet-400
+  const C3 = '#6366f1'; // indigo-500
+
+  // ── Start audio analysis ──────────────────────────────────
   useEffect(() => {
     if (isMuted) {
-      cancelAnimationFrame(animFrameRef.current);
-      clearInterval(idleRef.current!);
-      // Animate bars down to zero
-      setVolumes(Array(BAR_COUNT).fill(0));
-      setAvgVol(0);
+      cancelAnimationFrame(animRef.current);
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
-      contextRef.current?.close().catch(() => {});
-      contextRef.current = null;
+      ctxAudioRef.current?.close().catch(() => {});
+      ctxAudioRef.current = null;
       analyserRef.current = null;
+      volRef.current = 0;
+      drawLoop(true); // draw muted state once
       return;
     }
 
-    const active = { v: true };
+    let alive = true;
 
-    const startAnalysis = async () => {
+    const boot = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        if (!active.v) { stream.getTracks().forEach(t => t.stop()); return; }
-
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!alive) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
-        const ctx = new AudioContext();
-        contextRef.current = ctx;
 
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 128;
-        analyser.smoothingTimeConstant = SMOOTHING;
-        analyserRef.current = analyser;
-        ctx.createMediaStreamSource(stream).connect(analyser);
+        const ac = new AudioContext();
+        ctxAudioRef.current = ac;
+        const an = ac.createAnalyser();
+        an.fftSize = 256;
+        an.smoothingTimeConstant = 0.8;
+        analyserRef.current = an;
+        ac.createMediaStreamSource(stream).connect(an);
+      } catch { /* no mic — idle animation */ }
 
-        const data = new Uint8Array(analyser.frequencyBinCount);
+      drawLoop(false);
+    };
 
-        const tick = () => {
-          if (!active.v) return;
-          analyser.getByteFrequencyData(data);
+    boot();
+    return () => {
+      alive = false;
+      cancelAnimationFrame(animRef.current);
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      ctxAudioRef.current?.close().catch(() => {});
+      streamRef.current = null;
+      ctxAudioRef.current = null;
+      analyserRef.current = null;
+    };
+  }, [isMuted]);
 
-          // Focus on human voice range: bins 2–18 (~80–700 Hz)
-          const voiceStart = 2, voiceEnd = Math.min(18, data.length - 1);
-          const voiceSlice = data.slice(voiceStart, voiceEnd + 1);
+  // ── Main draw loop ────────────────────────────────────────
+  const drawLoop = (muted: boolean) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-          // Map to 5 bars with centre-weighted heights (like Google Meet)
-          const step = Math.floor(voiceSlice.length / BAR_COUNT);
-          const raw = Array.from({ length: BAR_COUNT }, (_, i) => {
-            const sl = voiceSlice.slice(i * step, (i + 1) * step);
-            return sl.reduce((s, v) => s + v, 0) / sl.length / 255;
-          });
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      canvas.width  = w * dpr;
+      canvas.height = h * dpr;
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, h);
 
-          // Centre bar is tallest — mirror pattern: [a, b, c, b, a]
-          const centre = raw[2];
-          const shaped = [
-            centre * 0.45 + raw[0] * 0.55,
-            centre * 0.72 + raw[1] * 0.28,
-            Math.min(centre * 1.1, 1),
-            centre * 0.72 + raw[3] * 0.28,
-            centre * 0.45 + raw[4] * 0.55,
-          ];
+      const cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2 - 2;
 
-          // Add minimum breathing so bars are never totally flat when unmuted
-          const withFloor = shaped.map((v, i) => Math.max(v, IDLE_HEIGHTS[i] * 0.18));
+      // ── Get volume ───────────────────────────────────────
+      let rawVol = 0;
+      if (!muted && analyserRef.current) {
+        const data = new Uint8Array(analyserRef.current.frequencyBinCount);
+        analyserRef.current.getByteFrequencyData(data);
+        // Focus on voice range bins (roughly 80–800 Hz)
+        const slice = data.slice(2, 20);
+        rawVol = slice.reduce((s, v) => s + v, 0) / slice.length / 255;
+      }
 
-          setVolumes(withFloor);
-          setAvgVol(centre);
-          animFrameRef.current = requestAnimationFrame(tick);
-        };
+      // Smooth volume
+      const target = muted ? 0 : rawVol;
+      volRef.current += (target - volRef.current) * (muted ? 0.15 : 0.22);
+      const vol = volRef.current;
 
-        animFrameRef.current = requestAnimationFrame(tick);
-      } catch {
-        // No mic access — fallback to breathing animation
-        startIdle(active);
+      // Advance phase for wave animation
+      phaseRef.current += muted ? 0.018 : 0.045 + vol * 0.08;
+      const phase = phaseRef.current;
+
+      // ── Background circle ───────────────────────────────
+      if (muted) {
+        // Muted: flat grey circle
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(99,102,241,0.08)';
+        ctx.fill();
+      } else {
+        // Active: gradient fill that pulses with volume
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        grad.addColorStop(0, `rgba(99,102,241,${0.18 + vol * 0.28})`);
+        grad.addColorStop(1, `rgba(167,139,250,${0.08 + vol * 0.12})`);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Outer ripple ring — grows with volume
+        if (vol > 0.05) {
+          const rippleR = r + 3 + vol * 14;
+          ctx.beginPath();
+          ctx.arc(cx, cy, rippleR, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(129,140,248,${Math.max(0, 0.55 - vol * 0.2)})`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // Second ripple for loud sounds
+          if (vol > 0.35) {
+            const ripple2 = r + 8 + vol * 22;
+            ctx.beginPath();
+            ctx.arc(cx, cy, ripple2, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(167,139,250,${Math.max(0, 0.35 - vol * 0.15)})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // ── Clip to circle ──────────────────────────────────
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.clip();
+
+      // ── Wave bars (inside circle) ────────────────────────
+      // 5 bars, centre-tallest, animated with sin wave
+      const BAR_COUNT  = 5;
+      const barW       = r * 0.18;
+      const gapW       = r * 0.10;
+      const totalW     = BAR_COUNT * barW + (BAR_COUNT - 1) * gapW;
+      const startX     = cx - totalW / 2;
+      const maxBarH    = r * (muted ? 0.12 : 0.72);
+
+      // Centre-weight multipliers: shorter sides, tall centre
+      const weights = [0.45, 0.72, 1.0, 0.72, 0.45];
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const x = startX + i * (barW + gapW);
+
+        // Each bar has its own phase offset → wave effect
+        const wave = Math.abs(Math.sin(phase + i * 0.9)) ;
+        const barH = muted
+          ? maxBarH                             // all same flat height when muted
+          : maxBarH * weights[i] * (0.15 + wave * 0.85);
+
+        const barX = x;
+        const barY = cy - barH / 2;
+
+        if (muted) {
+          // Flat dots when muted
+          ctx.beginPath();
+          ctx.arc(barX + barW / 2, cy, barW / 2, 0, Math.PI * 2);
+          ctx.fillStyle = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(99,102,241,0.2)';
+          ctx.fill();
+        } else {
+          // Gradient bar
+          const barGrad = ctx.createLinearGradient(0, barY, 0, barY + barH);
+          barGrad.addColorStop(0,   `rgba(167,139,250,${0.6 + wave * 0.4})`);  // violet top
+          barGrad.addColorStop(0.5, `rgba(99,102,241,${0.8 + wave * 0.2})`);   // indigo mid
+          barGrad.addColorStop(1,   `rgba(167,139,250,${0.6 + wave * 0.4})`);  // violet bottom
+
+          ctx.beginPath();
+          ctx.roundRect(barX, barY, barW, barH, barW / 2);
+          ctx.fillStyle = barGrad;
+          ctx.fill();
+
+          // Glow on loud bars
+          if (wave > 0.6 && vol > 0.2) {
+            ctx.shadowColor  = 'rgba(129,140,248,0.8)';
+            ctx.shadowBlur   = 8 + wave * 10;
+            ctx.beginPath();
+            ctx.roundRect(barX, barY, barW, barH, barW / 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+        }
+      }
+
+      ctx.restore();
+
+      // ── Border ring ─────────────────────────────────────
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = muted
+        ? isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.12)'
+        : `rgba(129,140,248,${0.3 + vol * 0.5})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      if (!muted) {
+        animRef.current = requestAnimationFrame(draw);
+      } else {
+        // Muted: still animate gently
+        animRef.current = requestAnimationFrame(draw);
       }
     };
 
-    startAnalysis();
-    return () => {
-      active.v = false;
-      cancelAnimationFrame(animFrameRef.current);
-      clearInterval(idleRef.current!);
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-      contextRef.current?.close().catch(() => {});
-      contextRef.current = null;
-    };
-  }, [isMuted, startIdle]);
+    cancelAnimationFrame(animRef.current);
+    animRef.current = requestAnimationFrame(draw);
+  };
 
-  // ── Size config ────────────────────────────────────────────
-  const cfg = {
-    //          circle  bar_w  barMaxH  gap   icon  bars_area_w  bars_area_h
-    sm: { r: 28, bw: 2.5, bmh: 10, gap: 2.5, ic: 13, baw: 18, bah: 14 },
-    md: { r: 40, bw: 3,   bmh: 16, gap: 3,   ic: 17, baw: 24, bah: 20 },
-    lg: { r: 56, bw: 4,   bmh: 26, gap: 4,   ic: 22, baw: 36, bah: 30 },
-  }[size];
-
-  const diameter = cfg.r * 2;
-
-  // Ripple scale: 1.0 at silence, up to 1.45 at full volume
-  const rippleScale = isMuted ? 0 : 1 + avgVol * 0.45;
-  // Glow intensity
-  const glowAlpha = isMuted ? 0 : 0.18 + avgVol * 0.32;
-
-  // Bar total width to centre them
-  const totalBarW = BAR_COUNT * cfg.bw + (BAR_COUNT - 1) * cfg.gap;
-  const barStartX = (diameter - totalBarW) / 2;
-  const barCentreY = cfg.r; // middle of circle
-
-  // Colors
-  const activeGreen = '#22c55e';
-  const mutedColor  = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.18)';
-  const mutedBg     = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  const activeBg    = `rgba(34,197,94,${glowAlpha})`;
+  // ── Mic icon overlay ──────────────────────────────────────
+  const iconSize = { sm: 14, md: 18, lg: 24 }[size];
 
   return (
     <div
-      className={`relative flex-shrink-0 select-none ${onClick ? 'cursor-pointer' : ''}`}
-      style={{ width: diameter, height: diameter }}
+      className="relative flex-shrink-0 select-none"
+      style={{ width: D, height: D, cursor: onClick ? 'pointer' : 'default' }}
       onClick={onClick}
       title={isMuted ? 'Microphone muted' : 'Microphone active'}
     >
-      {/* ── Ripple rings (Google Meet style) ── */}
-      {!isMuted && (
-        <>
-          <span
-            className="absolute inset-0 rounded-full"
-            style={{
-              background: `rgba(34,197,94,${0.10 + avgVol * 0.12})`,
-              transform: `scale(${rippleScale})`,
-              transition: 'transform 0.08s ease-out, background 0.08s ease-out',
-            }}
-          />
-          {avgVol > 0.3 && (
-            <span
-              className="absolute inset-0 rounded-full"
-              style={{
-                background: `rgba(34,197,94,${0.06 + avgVol * 0.08})`,
-                transform: `scale(${1 + avgVol * 0.75})`,
-                transition: 'transform 0.12s ease-out, background 0.12s ease-out',
-              }}
-            />
-          )}
-        </>
-      )}
-
-      {/* ── Main circle ── */}
+      <canvas
+        ref={canvasRef}
+        style={{ width: D, height: D, display: 'block', borderRadius: '50%' }}
+      />
+      {/* Mic icon centred on canvas */}
       <div
-        className="absolute inset-0 rounded-full flex items-center justify-center"
-        style={{
-          background: isMuted ? mutedBg : activeBg,
-          border: `1.5px solid ${isMuted ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') : `rgba(34,197,94,${0.35 + avgVol * 0.4})`}`,
-          transition: 'background 0.25s ease, border-color 0.25s ease',
-          backdropFilter: 'blur(8px)',
-        }}
+        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+        style={{ paddingBottom: 2 }}
       >
-        {/* ── Bars SVG — centred in circle ── */}
-        <svg
-          width={diameter}
-          height={diameter}
-          viewBox={`0 0 ${diameter} ${diameter}`}
-          style={{ position: 'absolute', inset: 0 }}
-        >
-          {volumes.map((v, i) => {
-            const barH = isMuted
-              ? cfg.bw // collapsed to a dot when muted
-              : Math.max(cfg.bw, v * cfg.bmh);
-            const x = barStartX + i * (cfg.bw + cfg.gap);
-            const y = barCentreY - barH / 2;
-            const fillAlpha = isMuted ? 0 : 0.5 + v * 0.5;
-            return (
-              <rect
-                key={i}
-                x={x}
-                y={y}
-                width={cfg.bw}
-                height={barH}
-                rx={cfg.bw / 2}
-                fill={isMuted ? mutedColor : `rgba(34,197,94,${fillAlpha})`}
-                style={{
-                  transition: isMuted
-                    ? 'height 0.4s cubic-bezier(.4,0,.2,1), y 0.4s cubic-bezier(.4,0,.2,1), fill 0.4s ease, opacity 0.4s ease'
-                    : 'height 0.055s linear, y 0.055s linear',
-                  filter: !isMuted && v > 0.5
-                    ? `drop-shadow(0 0 ${3 + v * 4}px rgba(34,197,94,0.7))`
-                    : 'none',
-                }}
-              />
-            );
-          })}
-        </svg>
-
-        {/* ── Mic icon — on top of bars ── */}
-        <div style={{ position: 'relative', zIndex: 2 }}>
-          {isMuted
-            ? <MicOff size={cfg.ic} style={{ color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.35)' }} />
-            : <Mic    size={cfg.ic} style={{ color: activeGreen, filter: `drop-shadow(0 0 4px rgba(34,197,94,${0.4 + avgVol * 0.4}))` }} />
-          }
-        </div>
+        {isMuted
+          ? <MicOff size={iconSize} style={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.4)' }} />
+          : (
+            <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none">
+              <rect x="9" y="2" width="6" height="13" rx="3"
+                fill="url(#micGrad)" />
+              <path d="M5 10a7 7 0 0 0 14 0" stroke="url(#micGrad)" strokeWidth="2"
+                strokeLinecap="round" fill="none"/>
+              <line x1="12" y1="19" x2="12" y2="22" stroke="url(#micGrad)"
+                strokeWidth="2" strokeLinecap="round"/>
+              <defs>
+                <linearGradient id="micGrad" x1="9" y1="2" x2="15" y2="22"
+                  gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#c4b5fd"/>
+                  <stop offset="100%" stopColor="#818cf8"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          )
+        }
       </div>
     </div>
   );
