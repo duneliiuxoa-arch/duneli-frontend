@@ -267,7 +267,11 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
   // ── Mic toggle ────────────────────────────────────────────
+  // Speaker: mic only works when isSpeaking (turn milne ke baad)
+  // Debater: mic always available
   const handleMicToggle = async () => {
+    // Speaker ke liye — sirf tab kaam kare jab turn aa gaya ho
+    if (userRole === 'speaker' && !isSpeaking) return;
     try {
       const next = !micMuted;
       await toggleMicrophone(!next);
@@ -333,18 +337,16 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const startSpeaking = () => {
     const userId = currentUserId || userIdRef.current;
     const agoraUid = String(toAgoraUid(userId));
-    // Clear skip timer if user clicked manually
     if (skipTimerRef.current) clearInterval(skipTimerRef.current);
     setSkipTimer(null);
     setIsSpeaking(true);
     setHandRaised(false);
-    // Remove self from queue
     setSpeakingQueue(prev => prev.filter(q => q.userId !== userId));
     setSpeakerTimeLeft(SPEAK_LIMIT_SEC);
+    // Auto unmute mic when turn starts
     toggleMicrophone(true).catch(() => {});
     setMicMuted(false);
     realtimeRef.current?.send({ type: 'broadcast', event: 'queue_speaking_start', payload: { userId, agoraUid, name: userName } });
-    // Broadcast current speaker to homepage
     supabase.channel(`topic_presence:${discussion.id}`).send({ type: 'broadcast', event: 'current_speaker', payload: { name: userName, topicId: discussion.id } }).catch(() => {});
     speakingTimerRef.current = setInterval(() => {
       setSpeakerTimeLeft(prev => {
@@ -938,7 +940,11 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                         handRaised ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`
                       }`}>
                       <Hand className={`w-5 h-5 ${handRaised ? '' : 'opacity-70'}`} />
-                      {handRaised ? 'Lower Hand' : 'Raise Hand'}
+                      {handRaised
+                        ? `Lower Hand${speakingQueue.findIndex(q => q.userId === (currentUserId || userIdRef.current)) >= 0
+                            ? ` · #${speakingQueue.findIndex(q => q.userId === (currentUserId || userIdRef.current)) + 1} in queue`
+                            : ''}`
+                        : 'Raise Hand'}
                     </button>
                   )}
 
@@ -966,7 +972,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                     </div>
                   )}
 
-                  {/* Speaking badge + End button */}
+                  {/* Speaking badge + End + Mic control — only when isSpeaking */}
                   {isSpeaking && (
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-red-500 text-white text-sm font-bold">
@@ -976,6 +982,15 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                         </span>
                         Speaking — {speakerTimeLeft !== null ? formatTime(speakerTimeLeft) : ''}
                       </div>
+                      {/* Mic mute/unmute only while actively speaking */}
+                      <button onClick={handleMicToggle}
+                        className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${
+                          !micMuted
+                            ? 'bg-green-500/15 border border-green-500/40 text-green-400'
+                            : `${theme.cardStyle} hover:bg-white/10`
+                        }`}>
+                        <MicVisualizer isMuted={micMuted} isDark={isDark} size="sm" />
+                      </button>
                       <button onClick={endSpeaking}
                         className={`px-4 py-2 rounded-2xl text-sm font-medium ${theme.cardStyle} hover:bg-red-500/20 transition-all`}>
                         Done
@@ -983,8 +998,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                     </div>
                   )}
 
-                  {/* Debater/Speaker: Mic button with live visualizer */}
-                  {(userRole === 'debater' || userRole === 'speaker') && (
+                  {/* Debater: Mic always available (no queue needed) */}
+                  {userRole === 'debater' && (
                     <button onClick={handleMicToggle}
                       className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-medium transition-all hover:scale-105 text-sm ${
                         !micMuted
