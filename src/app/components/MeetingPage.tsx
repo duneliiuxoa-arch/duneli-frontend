@@ -58,11 +58,21 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
 
   // ── Queue state ───────────────────────────────────────────
-  // Each entry: { userId, name, joinedAt (timestamp for ordering) }
   const [speakingQueue, setSpeakingQueue]   = useState<{ userId: string; name: string; joinedAt: number }[]>([]);
-  const [isSpeaking, setIsSpeaking]         = useState(false); // this user is currently speaking
+  const [isSpeaking, setIsSpeaking]         = useState(false);
   const speakingTimerRef                    = useRef<ReturnType<typeof setInterval> | null>(null);
   const SPEAK_LIMIT_SEC                     = 180; // 3 minutes
+
+  // ── Debater slot tracking ────────────────────────────────
+  // Max 3 slots per hour, each slot = 3 min mic time
+  const [debaterSlotsUsed, setDebaterSlotsUsed] = useState(0);       // 0-3
+  const [debaterSlotTime, setDebaterSlotTime]   = useState<number | null>(null); // seconds left in current slot
+  const [debaterMicOn, setDebaterMicOn]         = useState(false);   // debater's mic state
+  const debaterSlotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const debaterHourResetRef = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const DEBATER_SLOT_SEC    = 180; // 3 min per slot
+  const DEBATER_MAX_SLOTS   = 3;   // 3 slots per hour
+  const DEBATER_HOUR_MS     = 3600_000; // reset after 1 hour
 
   const realtimeRef    = useRef<any>(null);
   const ideasChannelRef = useRef<any>(null);
@@ -266,7 +276,94 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
-  // ── Mic toggle ────────────────────────────────────────────
+  // ── Debater: toggle mic with 3×3min slot system ─────────────
+  const handleDebaterMicToggle = async () => {
+    if (debaterMicOn) {
+      if (debaterSlotTimerRef.current) clearInterval(debaterSlotTimerRef.current);
+      setDebaterMicOn(false);
+      setDebaterSlotTime(null);
+      await toggleMicrophone(false).catch(() => {});
+      setMicMuted(true);
+      if (isTranscribing) transcriptionService.stop().then(() => { setIsTranscribing(false); setLiveTranscript(''); });
+    } else {
+      if (debaterSlotsUsed >= DEBATER_MAX_SLOTS) return;
+      // ── Server-side slot check (persists across rejoins) ──
+      if (sessionToken) {
+        try {
+          const r = await fetch(`${API_URL}/api/discussions/${discussion.id}/speak-slots/use`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+          });
+          if (r.status === 403) {
+            // Server says limit reached — sync local state and block
+            setDebaterSlotsUsed(DEBATER_MAX_SLOTS);
+            return;
+          }
+          if (r.ok) {
+            const data = await r.json();
+            setDebaterSlotsUsed(data.speakCount);
+          }
+        } catch { /* proceed optimistically on network error */ }
+      }
+      const newSlotsUsed = debaterSlotsUsed + 1;
+      setDebaterSlotsUsed(newSlotsUsed);
+      setDebaterMicOn(true);
+      setDebaterSlotTime(DEBATER_SLOT_SEC);
+      await toggleMicrophone(true).catch(() => {});
+      setMicMuted(false);
+      if (meetingIdRef.current && !isTranscribing) {
+        transcriptionService.start(
+          meetingIdRef.current, userIdRef.current, anonIdRef.current,
+          (segment) => segment.isFinal ? setLiveTranscript('') : setLiveTranscript(segment.text)
+        ).then(() => setIsTranscribing(true)).catch(() => {});
+      }
+      if (debaterSlotTimerRef.current) clearInterval(debaterSlotTimerRef.current);
+      debaterSlotTimerRef.current = setInterval(() => {
+        setDebaterSlotTime(prev => {
+          if (prev === null || prev <= 1) {
+            clearInterval(debaterSlotTimerRef.current!);
+            toggleMicrophone(false).catch(() => {});
+            setMicMuted(true);
+            setDebaterMicOn(false);
+            transcriptionService.stop().then(() => { setIsTranscribing(false); setLiveTranscript(''); });
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      if (newSlotsUsed === 1 && !debaterHourResetRef.current) {
+        debaterHourResetRef.current = setTimeout(() => {
+          setDebaterSlotsUsed(0);
+          debaterHourResetRef.current = null;
+        }, DEBATER_HOUR_MS);
+      }
+    }
+  };
+
+  // Cleanup debater timers on unmount
+  useEffect(() => () => {
+    if (debaterSlotTimerRef.current) clearInterval(debaterSlotTimerRef.current);
+    if (debaterHourResetRef.current) clearTimeout(debaterHourResetRef.current);
+  }, []);
+
+  // ── Debater speak slots (server-persisted across rejoins) ─────────
+  // On mount: fetch server count so rejoin shows correct remaining slots
+  useEffect(() => {
+    if (!sessionToken || userRole !== 'debater') return;
+    fetch(`${API_URL}/api/discussions/${discussion.id}/speak-slots`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        // Sync local state with server (speakCount = slots already used)
+        if (typeof data.speakCount === 'number') {
+          setDebaterSlotsUsed(data.speakCount);
+        }
+      })
+      .catch(() => {});
+  }, [sessionToken, userRole, discussion.id]);
+
+  // ── Mic toggle ──────────────────────────────────────────
   // Speaker: mic only works when isSpeaking (turn milne ke baad)
   // Debater: mic always available
   const handleMicToggle = async () => {
@@ -995,15 +1092,50 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                     </div>
                   )}
 
-                  {/* Debater: Mic always available (no queue needed) */}
+                  {/* Debater: Mic with 3×3min slot system */}
                   {userRole === 'debater' && (
-                    <div className="flex flex-col items-center gap-1">
-                      <button onClick={handleMicToggle} title={micMuted ? 'Unmute mic' : 'Mute mic'}>
-                        <MicVisualizer isMuted={micMuted} isDark={isDark} size="sm" />
-                      </button>
-                      <span className={`text-[9px] font-semibold tracking-wide ${micMuted ? (isDark ? 'text-white/30' : 'text-gray-400') : 'text-green-400'}`}>
-                        {micMuted ? 'MUTED' : 'LIVE'}
-                      </span>
+                    <div className="flex items-center gap-2">
+                      {/* Slot counter */}
+                      <div className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold ${
+                        debaterSlotsUsed >= DEBATER_MAX_SLOTS
+                          ? 'bg-red-500/15 text-red-400 border border-red-500/25'
+                          : isDark ? 'bg-white/8 text-white/50 border border-white/10' : 'bg-gray-100 text-gray-500 border border-gray-200'
+                      }`}>
+                        <Volume2 className="w-3 h-3" />
+                        {DEBATER_MAX_SLOTS - debaterSlotsUsed}/{DEBATER_MAX_SLOTS} left
+                      </div>
+
+                      {/* Mic button — blocked when slots exhausted */}
+                      {debaterSlotsUsed < DEBATER_MAX_SLOTS || debaterMicOn ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <button
+                            onClick={handleDebaterMicToggle}
+                            title={debaterMicOn ? 'Mute mic' : `Start speaking (${DEBATER_MAX_SLOTS - debaterSlotsUsed} slots left)`}
+                            className="relative">
+                            <MicVisualizer isMuted={!debaterMicOn} isDark={isDark} size="sm" />
+                            {/* Slot timer ring */}
+                            {debaterMicOn && debaterSlotTime !== null && (
+                              <span className={`absolute -top-1 -right-1 text-[9px] font-mono font-bold px-1 rounded-full ${
+                                debaterSlotTime <= 30 ? 'bg-red-500 text-white' : 'bg-indigo-500 text-white'
+                              }`}>
+                                {formatTime(debaterSlotTime)}
+                              </span>
+                            )}
+                          </button>
+                          <span className={`text-[9px] font-semibold tracking-wide ${
+                            debaterMicOn ? 'text-green-400' : isDark ? 'text-white/30' : 'text-gray-400'
+                          }`}>
+                            {debaterMicOn ? `${debaterSlotTime !== null ? formatTime(debaterSlotTime) : ''} LIVE` : 'TAP TO SPEAK'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold ${
+                          isDark ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-red-50 text-red-500 border border-red-200'
+                        }`}>
+                          <MicOff className="w-3.5 h-3.5" />
+                          Slots used · resets in 1hr
+                        </div>
+                      )}
                     </div>
                   )}
 

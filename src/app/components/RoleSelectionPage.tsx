@@ -48,12 +48,13 @@ export function RoleSelectionPage({
       id: 'debater' as Role,
       icon: Scale,
       title: 'Debater',
-      description: 'Participate actively with mic access throughout the discussion.',
+      description: 'Speak up to 3 times per hour, 3 minutes each time.',
       permissions: [
-        'Microphone always available',
-        'Mute/unmute freely',
-        'No time limit',
-        'Active participation encouraged'
+        '3 speaking slots per hour',
+        '3-minute mic time per slot',
+        'Mic auto-mutes after 3 minutes',
+        'Tap mic again to use next slot',
+        'Slots reset after 1 hour'
       ]
     }
   ];
