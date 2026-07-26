@@ -86,9 +86,25 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
 
   // ── Session ────────────────────────────────────────────────
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSessionToken(session?.access_token || null);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      const token = session?.access_token || null;
+      setSessionToken(token);
       setCurrentUserId(session?.user?.id || null);
+
+      // ── Rejoin fix: server se actual slot count fetch karo ──
+      // Local state mein 0 hota hai jab component mount hota hai (rejoin ke baad bhi)
+      // Backend MeetingAttendee.speakCount mein persist hota hai — isliye wahan se lao
+      if (token && userRole === 'debater') {
+        try {
+          const r = await fetch(`${API_URL}/api/discussions/${discussion.id}/speak-slots`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (r.ok) {
+            const data = await r.json();
+            setDebaterSlotsUsed(data.speakCount ?? 0);
+          }
+        } catch { /* silent — fallback to 0 */ }
+      }
     });
   }, []);
 
@@ -288,23 +304,61 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     } else {
       if (debaterSlotsUsed >= DEBATER_MAX_SLOTS) return;
       // ── Server-side slot check (persists across rejoins) ──
-      if (sessionToken) {
+      // sessionToken ko ref mein bhi rakhte hain taaki async timing issue na ho
+      const token = sessionToken;
+      if (token) {
         try {
           const r = await fetch(`${API_URL}/api/discussions/${discussion.id}/speak-slots/use`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           });
           if (r.status === 403) {
-            // Server says limit reached — sync local state and block
             setDebaterSlotsUsed(DEBATER_MAX_SLOTS);
             return;
           }
           if (r.ok) {
             const data = await r.json();
-            setDebaterSlotsUsed(data.speakCount);
+            // Server se sahi count set karo — local increment nahi karenge
+            const serverCount = data.speakCount;
+            setDebaterSlotsUsed(serverCount);
+            // Baaki logic chalao usi count ke saath
+            setDebaterMicOn(true);
+            setDebaterSlotTime(DEBATER_SLOT_SEC);
+            await toggleMicrophone(true).catch(() => {});
+            setMicMuted(false);
+            if (meetingIdRef.current && !isTranscribing) {
+              transcriptionService.start(
+                meetingIdRef.current, userIdRef.current, anonIdRef.current,
+                (segment) => segment.isFinal ? setLiveTranscript('') : setLiveTranscript(segment.text)
+              ).then(() => setIsTranscribing(true)).catch(() => {});
+            }
+            if (debaterSlotTimerRef.current) clearInterval(debaterSlotTimerRef.current);
+            debaterSlotTimerRef.current = setInterval(() => {
+              setDebaterSlotTime(prev => {
+                if (prev === null || prev <= 1) {
+                  clearInterval(debaterSlotTimerRef.current!);
+                  toggleMicrophone(false).catch(() => {});
+                  setMicMuted(true);
+                  setDebaterMicOn(false);
+                  transcriptionService.stop().then(() => { setIsTranscribing(false); setLiveTranscript(''); });
+                  return null;
+                }
+                return prev - 1;
+              });
+            }, 1000);
+            if (serverCount >= DEBATER_MAX_SLOTS) {
+              // 3 slots done — schedule server-side reset timer
+              if (debaterHourResetRef.current) clearTimeout(debaterHourResetRef.current);
+              debaterHourResetRef.current = setTimeout(() => {
+                setDebaterSlotsUsed(0);
+                debaterHourResetRef.current = null;
+              }, DEBATER_HOUR_MS);
+            }
+            return; // early return — baaki duplicate code skip
           }
-        } catch { /* proceed optimistically on network error */ }
+        } catch { /* network error — fall through to local-only mode */ }
       }
+      // Fallback: no token yet (rare) — local only
       const newSlotsUsed = debaterSlotsUsed + 1;
       setDebaterSlotsUsed(newSlotsUsed);
       setDebaterMicOn(true);
@@ -355,9 +409,16 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     })
       .then(r => r.json())
       .then(data => {
-        // Sync local state with server (speakCount = slots already used)
         if (typeof data.speakCount === 'number') {
           setDebaterSlotsUsed(data.speakCount);
+        }
+        // Agar limit hit hai aur server ne reset time diya — auto-reset schedule karo
+        if (data.msUntilReset && data.msUntilReset > 0) {
+          if (debaterHourResetRef.current) clearTimeout(debaterHourResetRef.current);
+          debaterHourResetRef.current = setTimeout(() => {
+            setDebaterSlotsUsed(0);
+            debaterHourResetRef.current = null;
+          }, data.msUntilReset);
         }
       })
       .catch(() => {});
