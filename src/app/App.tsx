@@ -31,8 +31,13 @@ import { mockDiscussions, mockNotifications, mockUser } from './data/mockData';
 import { Discussion, User, Notification, Theme, DiscoveryMode, Category, SortOption, Language, Page, Role } from './types';
 import { themes } from './config/themes';
 import { initializeSecurityDeterrents } from '../services/securityDeterrents';
+import { useAuth } from '../hooks/useAuth';
+import { logout } from '../services/authService';
 
 export default function App() {
+  // Real Supabase Auth Integration
+  const supabaseAuth = useAuth();
+
   // Splash Screen State
   const [showSplash, setShowSplash] = useState(true);
 
@@ -48,6 +53,20 @@ export default function App() {
   
   // User State
   const [user, setUser] = useState<User>(mockUser);
+
+  // Update App User state whenever Supabase Auth Session changes
+  useEffect(() => {
+    if (supabaseAuth.user) {
+      setUser({
+        id: supabaseAuth.user.id,
+        name: supabaseAuth.user.name,
+        avatar: supabaseAuth.user.avatar || '',
+        isLoggedIn: !supabaseAuth.user.isGuest,
+      });
+    } else {
+      setUser(mockUser);
+    }
+  }, [supabaseAuth.user]);
   
   // Data State
   const [discussions, setDiscussions] = useState<Discussion[]>(mockDiscussions);
@@ -80,34 +99,57 @@ export default function App() {
     document.documentElement.scrollTop = 0;
   }, []);
 
-  // Prevent global text selection and element dragging everywhere on site except input elements
+  // Prevent global text copy, selection, right-click, and dragging everywhere on site except input elements
   useEffect(() => {
+    const isInputElement = (el: HTMLElement | null) => {
+      if (!el) return false;
+      const tagName = el.tagName;
+      return tagName === 'INPUT' || tagName === 'TEXTAREA' || el.isContentEditable || Boolean(el.closest('input')) || Boolean(el.closest('textarea'));
+    };
+
     const clearSelection = () => {
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable)) {
-        return;
-      }
+      const activeEl = document.activeElement as HTMLElement;
+      if (isInputElement(activeEl)) return;
       if (window.getSelection) {
         window.getSelection()?.removeAllRanges();
       }
     };
 
-    const preventSelect = (e: Event) => {
+    const preventAction = (e: Event) => {
       const target = e.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.closest('input') || target.closest('textarea'))) {
-        return;
-      }
+      if (isInputElement(target)) return;
       clearSelection();
       e.preventDefault();
     };
 
-    window.addEventListener('selectstart', preventSelect);
-    window.addEventListener('dragstart', preventSelect);
+    const preventCopyKey = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement;
+      if (isInputElement(activeEl)) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X')) {
+        e.preventDefault();
+        clearSelection();
+      }
+    };
+
+    window.addEventListener('selectstart', preventAction);
+    window.addEventListener('dragstart', preventAction);
+    window.addEventListener('mousedown', clearSelection);
+    window.addEventListener('mouseup', clearSelection);
+    window.addEventListener('copy', preventAction);
+    window.addEventListener('cut', preventAction);
+    window.addEventListener('contextmenu', preventAction);
+    window.addEventListener('keydown', preventCopyKey);
     window.addEventListener('selectionchange', clearSelection);
 
     return () => {
-      window.removeEventListener('selectstart', preventSelect);
-      window.removeEventListener('dragstart', preventSelect);
+      window.removeEventListener('selectstart', preventAction);
+      window.removeEventListener('dragstart', preventAction);
+      window.removeEventListener('mousedown', clearSelection);
+      window.removeEventListener('mouseup', clearSelection);
+      window.removeEventListener('copy', preventAction);
+      window.removeEventListener('cut', preventAction);
+      window.removeEventListener('contextmenu', preventAction);
+      window.removeEventListener('keydown', preventCopyKey);
       window.removeEventListener('selectionchange', clearSelection);
     };
   }, []);
@@ -145,7 +187,8 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     setUser(mockUser);
     setCurrentPage('homepage');
     // Reset user-specific states

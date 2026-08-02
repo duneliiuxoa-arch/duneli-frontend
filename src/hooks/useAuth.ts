@@ -1,87 +1,44 @@
-// Authentication Hook - STRICT IMPLEMENTATION
+// Supabase Real Authentication Hook
 import { useState, useEffect } from 'react';
-import { User } from 'firebase/auth';
 import { 
   onAuthChange, 
-  getUserAnonymousId,
-  getUserProfile,
-  checkRedirectResult,
+  formatSupabaseUser,
+  SupabaseUserProfile,
   isGuestUser,
 } from '../services/authService';
 
 export const useAuth = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [anonymousId, setAnonymousId] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<SupabaseUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isGuest, setIsGuest] = useState(false);
-  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    const initAuth = async () => {
-      try {
-        // Check for redirect result first (from Google redirect fallback)
-        await checkRedirectResult();
-      } catch (error) {
-        console.error('Error checking redirect result:', error);
+    const unsubscribe = onAuthChange((rawUser) => {
+      if (!isMounted) return;
+
+      if (rawUser) {
+        const formatted = formatSupabaseUser(rawUser);
+        setUserProfile(formatted);
+      } else {
+        setUserProfile(null);
       }
-
-      // Set up auth state listener
-      const unsubscribe = onAuthChange(async (authUser) => {
-        if (!isMounted) return;
-
-        setUser(authUser);
-
-        if (authUser) {
-          try {
-            // Get anonymous ID
-            const anonId = await getUserAnonymousId(authUser.uid);
-            if (isMounted) {
-              setAnonymousId(anonId);
-              setIsGuest(isGuestUser(authUser));
-            }
-          } catch (error) {
-            console.error('Error fetching user data:', error);
-            if (isMounted) {
-              setAnonymousId(null);
-              setIsGuest(false);
-            }
-          }
-        } else {
-          if (isMounted) {
-            setAnonymousId(null);
-            setIsGuest(false);
-          }
-        }
-
-        if (isMounted) {
-          setLoading(false);
-          setInitialized(true);
-        }
-      });
-
-      return unsubscribe;
-    };
-
-    const unsubscribePromise = initAuth();
+      setLoading(false);
+    });
 
     return () => {
       isMounted = false;
-      unsubscribePromise.then(unsubscribe => {
-        if (unsubscribe) {
-          unsubscribe();
-        }
-      });
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
     };
   }, []);
 
   return {
-    user,
-    anonymousId,
+    user: userProfile,
+    anonymousId: userProfile?.anonymousId || null,
     loading,
-    isGuest,
-    isAuthenticated: !!user && !isGuestUser(user),
-    initialized,
+    isGuest: userProfile ? userProfile.isGuest : false,
+    isAuthenticated: !!userProfile && !userProfile.isGuest,
   };
 };

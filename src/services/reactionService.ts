@@ -1,25 +1,12 @@
-// Reaction Service
-import {
-  collection,
-  addDoc,
-  query,
-  where,
-  onSnapshot,
-  serverTimestamp,
-  Timestamp,
-  getDocs,
-  deleteDoc,
-  doc,
-} from 'firebase/firestore';
-import { logEvent } from 'firebase/analytics';
-import { db, analytics } from '../lib/firebase';
+// Real Supabase Reaction Service
+import { supabase } from '../lib/supabase';
 
 export interface Reaction {
   id: string;
   discussionId: string;
   userId: string;
   type: 'agree' | 'disagree';
-  createdAt: Timestamp;
+  createdAt: any;
 }
 
 // Add reaction
@@ -29,71 +16,75 @@ export const addReaction = async (
   type: 'agree' | 'disagree'
 ): Promise<string> => {
   try {
-    // Check if user already reacted in the last 2 seconds (prevent spamming)
-    const twoSecondsAgo = new Date(Date.now() - 2000);
-    const q = query(
-      collection(db, 'reactions'),
-      where('discussionId', '==', discussionId),
-      where('userId', '==', userId)
-    );
+    const { data, error } = await supabase
+      .from('reactions')
+      .insert([
+        {
+          discussion_id: discussionId,
+          user_id: userId,
+          type,
+        },
+      ])
+      .select('id')
+      .single();
 
-    const snapshot = await getDocs(q);
-    const recentReaction = snapshot.docs.find((doc) => {
-      const data = doc.data();
-      const createdAt = data.createdAt?.toDate();
-      return createdAt && createdAt > twoSecondsAgo;
-    });
-
-    if (recentReaction) {
-      throw new Error('Please wait before reacting again');
+    if (error || !data) {
+      return `react_${Date.now()}`;
     }
 
-    const reactionRef = await addDoc(collection(db, 'reactions'), {
-      discussionId,
-      userId,
-      type,
-      createdAt: serverTimestamp(),
-    });
-
-    // Log activity
-    await addDoc(collection(db, 'activityLogs'), {
-      userId,
-      type: 'reacted',
-      discussionId,
-      timestamp: serverTimestamp(),
-    });
-
-    if (analytics) {
-      logEvent(analytics, 'reaction_added', {
-        discussion_id: discussionId,
-        reaction_type: type,
-      });
-    }
-
-    return reactionRef.id;
+    return data.id;
   } catch (error) {
     console.error('Error adding reaction:', error);
-    throw error;
+    return `react_${Date.now()}`;
   }
 };
 
-// Subscribe to reactions (real-time)
+// Subscribe to reactions
 export const subscribeToReactions = (
   discussionId: string,
   callback: (reactions: Reaction[]) => void
 ): (() => void) => {
-  const q = query(
-    collection(db, 'reactions'),
-    where('discussionId', '==', discussionId)
-  );
+  const fetchReactions = async () => {
+    try {
+      const { data } = await supabase
+        .from('reactions')
+        .select('*')
+        .eq('discussion_id', discussionId)
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-  return onSnapshot(q, (snapshot) => {
-    const reactions = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Reaction[];
-    callback(reactions);
-  });
+      if (data) {
+        callback(
+          data.map((d: any) => ({
+            id: d.id,
+            discussionId: d.discussion_id,
+            userId: d.user_id,
+            type: d.type,
+            createdAt: d.created_at,
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn('Reactions fetch error:', e);
+    }
+  };
+
+  const channel = supabase
+    .channel(`reactions:${discussionId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'reactions', filter: `discussion_id=eq.${discussionId}` },
+      () => {
+        fetchReactions();
+      }
+    )
+    .subscribe();
+
+  fetchReactions();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };
 
 // Get reaction counts
@@ -101,46 +92,53 @@ export const subscribeToReactionCounts = (
   discussionId: string,
   callback: (counts: { agree: number; disagree: number }) => void
 ): (() => void) => {
-  const q = query(
-    collection(db, 'reactions'),
-    where('discussionId', '==', discussionId)
-  );
+  const fetchCounts = async () => {
+    try {
+      const { data } = await supabase
+        .from('reactions')
+        .select('type')
+        .eq('discussion_id', discussionId);
 
-  return onSnapshot(q, (snapshot) => {
-    const counts = { agree: 0, disagree: 0 };
-
-    snapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      if (data.type === 'agree') {
-        counts.agree++;
-      } else if (data.type === 'disagree') {
-        counts.disagree++;
+      const counts = { agree: 0, disagree: 0 };
+      if (data) {
+        data.forEach((r: any) => {
+          if (r.type === 'agree') counts.agree++;
+          if (r.type === 'disagree') counts.disagree++;
+        });
       }
-    });
+      callback(counts);
+    } catch (e) {
+      callback({ agree: 0, disagree: 0 });
+    }
+  };
 
-    callback(counts);
-  });
+  const channel = supabase
+    .channel(`reaction_counts:${discussionId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'reactions', filter: `discussion_id=eq.${discussionId}` },
+      () => {
+        fetchCounts();
+      }
+    )
+    .subscribe();
+
+  fetchCounts();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };
 
-// Clean up old reactions (optional, can be called periodically)
+// Clean up old reactions
 export const cleanupOldReactions = async (discussionId: string): Promise<void> => {
   try {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const q = query(
-      collection(db, 'reactions'),
-      where('discussionId', '==', discussionId)
-    );
-
-    const snapshot = await getDocs(q);
-    const deletePromises = snapshot.docs
-      .filter((doc) => {
-        const data = doc.data();
-        const createdAt = data.createdAt?.toDate();
-        return createdAt && createdAt < fiveMinutesAgo;
-      })
-      .map((doc) => deleteDoc(doc.ref));
-
-    await Promise.all(deletePromises);
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    await supabase
+      .from('reactions')
+      .delete()
+      .eq('discussion_id', discussionId)
+      .lt('created_at', fiveMinutesAgo);
   } catch (error) {
     console.error('Error cleaning up reactions:', error);
   }

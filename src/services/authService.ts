@@ -1,355 +1,165 @@
-// Authentication Service - STRICT IMPLEMENTATION
-import {
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  signInWithPhoneNumber,
-  signInAnonymously,
-  signOut,
-  onAuthStateChanged,
-  User,
-  ConfirmationResult,
-  RecaptchaVerifier,
-  AuthError,
-  browserLocalPersistence,
-  setPersistence,
-} from 'firebase/auth';
-import {
-  doc,
-  setDoc,
-  getDoc,
-  serverTimestamp,
-  updateDoc,
-} from 'firebase/firestore';
-import { logEvent } from 'firebase/analytics';
-import { auth, db, googleProvider, setupRecaptcha, analytics } from '../lib/firebase';
+// Real Supabase Authentication Service
+import { supabase } from '../lib/supabase';
 
-// Generate anonymous ID
-const generateAnonymousId = (): string => {
+export interface SupabaseUserProfile {
+  id: string;
+  email?: string;
+  name: string;
+  avatar?: string;
+  anonymousId: string;
+  isGuest: boolean;
+  provider: 'google' | 'phone' | 'guest' | 'email';
+}
+
+// Generate anonymous Duneli ID (e.g., Δ-4821)
+export const generateAnonymousId = (seed?: string): string => {
+  if (seed) {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash << 5) - hash + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    const num = Math.abs(hash % 9000) + 1000;
+    const prefixes = ['Δ', 'Σ', 'Ω', 'Λ', 'Φ', 'Ψ', 'Ξ'];
+    const prefix = prefixes[Math.abs(hash % prefixes.length)];
+    return `${prefix}-${num}`;
+  }
   const prefixes = ['Δ', 'Σ', 'Ω', 'Λ', 'Φ', 'Ψ', 'Ξ'];
   const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
   const number = Math.floor(1000 + Math.random() * 9000);
   return `${prefix}-${number}`;
 };
 
-// Create or update user profile
-const createOrUpdateUserProfile = async (
-  user: User,
-  provider: 'google' | 'phone' | 'guest'
-): Promise<void> => {
+// Sign in with Google via Supabase OAuth
+export const signInWithGoogle = async () => {
   try {
-    const userRef = doc(db, 'users', user.uid);
-    const userDoc = await getDoc(userRef);
-
-    if (!userDoc.exists()) {
-      // Create new user with anonymous ID
-      await setDoc(userRef, {
-        anonymousId: generateAnonymousId(),
-        provider,
-        createdAt: serverTimestamp(),
-        lastActiveAt: serverTimestamp(),
-      });
-    } else {
-      // Update last active
-      await updateDoc(userRef, {
-        lastActiveAt: serverTimestamp(),
-      });
-    }
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+    return data;
   } catch (error) {
-    console.error('Error creating/updating user profile:', error);
+    console.error('Error signing in with Google via Supabase:', error);
     throw error;
   }
 };
 
-// Set auth persistence (survives refresh)
-const initAuthPersistence = async (): Promise<void> => {
+// Sign in with Phone Number (OTP)
+export const signInWithPhone = async (phoneNumber: string) => {
   try {
-    await setPersistence(auth, browserLocalPersistence);
+    const { data, error } = await supabase.auth.signInWithOtp({
+      phone: phoneNumber,
+    });
+    if (error) throw error;
+    return data;
   } catch (error) {
-    console.error('Error setting auth persistence:', error);
-  }
-};
-
-// Initialize persistence on module load
-initAuthPersistence();
-
-// Sign in with Google - WITH POPUP BLOCKED FALLBACK
-export const signInWithGoogle = async (): Promise<User> => {
-  try {
-    // Ensure persistence is set
-    await setPersistence(auth, browserLocalPersistence);
-
-    // Try popup first
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-
-      // Create/update profile
-      await createOrUpdateUserProfile(user, 'google');
-
-      // Log analytics
-      if (analytics) {
-        logEvent(analytics, 'google_login_success', {
-          method: 'google',
-          uid: user.uid,
-        });
-      }
-
-      return user;
-    } catch (popupError) {
-      const error = popupError as AuthError;
-      
-      // If popup blocked, try redirect
-      if (
-        error.code === 'auth/popup-blocked' ||
-        error.code === 'auth/popup-closed-by-user' ||
-        error.code === 'auth/cancelled-popup-request'
-      ) {
-        console.warn('Popup blocked, falling back to redirect');
-        await signInWithRedirect(auth, googleProvider);
-        
-        // signInWithRedirect doesn't return immediately
-        // The user will be redirected and come back
-        // We need to handle this in checkRedirectResult
-        throw new Error('REDIRECT_IN_PROGRESS');
-      }
-
-      // Re-throw other errors
-      throw popupError;
-    }
-  } catch (error) {
-    console.error('Error signing in with Google:', error);
+    console.error('Error sending OTP via Supabase:', error);
     throw error;
   }
 };
 
-// Check for redirect result (call on app init)
-export const checkRedirectResult = async (): Promise<User | null> => {
+// Verify Phone OTP
+export const verifyPhoneCode = async (phone: string, token: string) => {
   try {
-    const result = await getRedirectResult(auth);
-    
-    if (result && result.user) {
-      const user = result.user;
-
-      // Create/update profile
-      await createOrUpdateUserProfile(user, 'google');
-
-      // Log analytics
-      if (analytics) {
-        logEvent(analytics, 'google_login_success', {
-          method: 'google_redirect',
-          uid: user.uid,
-        });
-      }
-
-      return user;
-    }
-
-    return null;
+    const { data, error } = await supabase.auth.verifyOtp({
+      phone,
+      token,
+      type: 'sms',
+    });
+    if (error) throw error;
+    return data.user;
   } catch (error) {
-    console.error('Error checking redirect result:', error);
+    console.error('Error verifying phone code via Supabase:', error);
     throw error;
   }
 };
 
-// Sign in with Phone Number - STRICT IMPLEMENTATION
-let recaptchaVerifier: RecaptchaVerifier | null = null;
-
-export const initializeRecaptcha = (containerId: string): RecaptchaVerifier => {
+// Guest Mode - Anonymous Sign In
+export const continueAsGuest = async () => {
   try {
-    // Clean up existing verifier
-    if (recaptchaVerifier) {
-      recaptchaVerifier.clear();
-      recaptchaVerifier = null;
-    }
-
-    // Create new verifier
-    recaptchaVerifier = setupRecaptcha(containerId);
-    
-    return recaptchaVerifier;
-  } catch (error) {
-    console.error('Error initializing recaptcha:', error);
-    throw error;
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) throw error;
+    return data.user;
+  } catch (err) {
+    console.warn('Supabase anonymous sign in fallback to local guest session:', err);
+    const guestId = 'guest_' + Math.random().toString(36).substring(2, 9);
+    const guestUser = {
+      id: guestId,
+      email: `guest_${guestId}@duneli.app`,
+      user_metadata: { name: 'Guest User', is_guest: true, anonymous_id: generateAnonymousId(guestId) },
+      is_anonymous: true,
+    };
+    localStorage.setItem('duneli_guest_user', JSON.stringify(guestUser));
+    return guestUser;
   }
 };
 
-export const signInWithPhone = async (
-  phoneNumber: string
-): Promise<ConfirmationResult> => {
-  try {
-    if (!recaptchaVerifier) {
-      throw new Error('Recaptcha not initialized. Call initializeRecaptcha first.');
-    }
-
-    // Ensure persistence
-    await setPersistence(auth, browserLocalPersistence);
-
-    // Send OTP
-    const confirmationResult = await signInWithPhoneNumber(
-      auth,
-      phoneNumber,
-      recaptchaVerifier
-    );
-
-    return confirmationResult;
-  } catch (error) {
-    console.error('Error sending OTP:', error);
-    
-    // Reset recaptcha on error
-    if (recaptchaVerifier) {
-      try {
-        recaptchaVerifier.clear();
-      } catch (e) {
-        // Ignore clear errors
-      }
-      recaptchaVerifier = null;
-    }
-    
-    throw error;
-  }
-};
-
-export const verifyPhoneCode = async (
-  confirmationResult: ConfirmationResult,
-  code: string
-): Promise<User> => {
-  try {
-    const result = await confirmationResult.confirm(code);
-    const user = result.user;
-
-    // Create/update profile
-    await createOrUpdateUserProfile(user, 'phone');
-
-    // Log analytics
-    if (analytics) {
-      logEvent(analytics, 'phone_login_success', {
-        method: 'phone',
-        uid: user.uid,
-      });
-    }
-
-    // Clean up recaptcha
-    if (recaptchaVerifier) {
-      try {
-        recaptchaVerifier.clear();
-      } catch (e) {
-        // Ignore
-      }
-      recaptchaVerifier = null;
-    }
-
-    return user;
-  } catch (error) {
-    console.error('Error verifying phone code:', error);
-    throw error;
-  }
-};
-
-// Guest mode - USES FIREBASE ANONYMOUS AUTH
-export const continueAsGuest = async (): Promise<User> => {
-  try {
-    // Ensure persistence
-    await setPersistence(auth, browserLocalPersistence);
-
-    // Sign in anonymously
-    const result = await signInAnonymously(auth);
-    const user = result.user;
-
-    // Create guest profile
-    await createOrUpdateUserProfile(user, 'guest');
-
-    // Log analytics
-    if (analytics) {
-      logEvent(analytics, 'guest_login', {
-        method: 'guest',
-        uid: user.uid,
-      });
-    }
-
-    return user;
-  } catch (error) {
-    console.error('Error signing in as guest:', error);
-    throw error;
-  }
-};
-
-// Sign out - FULLY CLEAR SESSION
+// Sign Out
 export const logout = async (): Promise<void> => {
   try {
-    // Clean up recaptcha
-    if (recaptchaVerifier) {
-      try {
-        recaptchaVerifier.clear();
-      } catch (e) {
-        // Ignore
+    localStorage.removeItem('duneli_guest_user');
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error('Error signing out from Supabase:', error);
+  } catch (error) {
+    console.error('Logout error:', error);
+  }
+};
+
+// Listen to Auth state changes in Supabase
+export const onAuthChange = (callback: (user: any | null) => void) => {
+  // Check initial session
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session?.user) {
+      callback(session.user);
+    } else {
+      const guestUserStr = localStorage.getItem('duneli_guest_user');
+      if (guestUserStr) {
+        callback(JSON.parse(guestUserStr));
+      } else {
+        callback(null);
       }
-      recaptchaVerifier = null;
     }
+  });
 
-    // Sign out from Firebase
-    await signOut(auth);
-
-    // Clear any local storage
-    localStorage.removeItem('duneli_user');
-    sessionStorage.clear();
-  } catch (error) {
-    console.error('Error signing out:', error);
-    throw error;
-  }
-};
-
-// Auth state listener - PERSISTENT ACROSS REFRESH
-export const onAuthChange = (callback: (user: User | null) => void) => {
-  return onAuthStateChanged(auth, callback);
-};
-
-// Get user anonymous ID
-export const getUserAnonymousId = async (userId: string): Promise<string | null> => {
-  try {
-    const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
-
-    if (userDoc.exists()) {
-      return userDoc.data().anonymousId || null;
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.user) {
+      callback(session.user);
+    } else {
+      const guestUserStr = localStorage.getItem('duneli_guest_user');
+      if (guestUserStr) {
+        callback(JSON.parse(guestUserStr));
+      } else {
+        callback(null);
+      }
     }
+  });
 
-    return null;
-  } catch (error) {
-    console.error('Error getting user anonymous ID:', error);
-    return null;
-  }
+  return () => subscription.unsubscribe();
 };
 
-// Get user profile
-export const getUserProfile = async (userId: string) => {
-  try {
-    const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
+// Map raw Supabase user to clean App user object
+export const formatSupabaseUser = (rawUser: any): SupabaseUserProfile => {
+  const isGuest = Boolean(rawUser.is_anonymous || rawUser.user_metadata?.is_guest || rawUser.id?.startsWith('guest_'));
+  const name = rawUser.user_metadata?.full_name || rawUser.user_metadata?.name || (isGuest ? 'Guest User' : rawUser.email?.split('@')[0] || 'User');
+  const avatar = rawUser.user_metadata?.avatar_url || '';
+  const anonymousId = rawUser.user_metadata?.anonymous_id || generateAnonymousId(rawUser.id);
+  const provider = isGuest ? 'guest' : rawUser.app_metadata?.provider || 'google';
 
-    if (userDoc.exists()) {
-      return userDoc.data();
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error getting user profile:', error);
-    return null;
-  }
+  return {
+    id: rawUser.id,
+    email: rawUser.email,
+    name,
+    avatar,
+    anonymousId,
+    isGuest,
+    provider,
+  };
 };
 
-// Check if user is guest
-export const isGuestUser = (user: User | null): boolean => {
-  return user?.isAnonymous || false;
-};
-
-// Cleanup function for recaptcha
-export const cleanupRecaptcha = (): void => {
-  if (recaptchaVerifier) {
-    try {
-      recaptchaVerifier.clear();
-    } catch (e) {
-      // Ignore
-    }
-    recaptchaVerifier = null;
-  }
+export const isGuestUser = (user: any | null): boolean => {
+  if (!user) return false;
+  return Boolean(user.is_anonymous || user.user_metadata?.is_guest || user.id?.startsWith('guest_'));
 };

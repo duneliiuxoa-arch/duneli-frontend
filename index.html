@@ -16,7 +16,7 @@
     <meta property="og:type"        content="website" />
     <meta property="og:url"         content="https://duneli.vercel.app" />
     <meta property="og:title"       content="Duneli — Live Debate Platform" />
-    <meta property="og:description" content="Join real-time intellectual debates and discussions on Duneli." />
+    <meta property="og:description" content="Join real-time intellectual debates on Duneli." />
     <meta property="og:image"       content="https://duneli.vercel.app/og-image.png" />
 
     <!-- ── Twitter Card ── -->
@@ -35,6 +35,36 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#6366f1" />
+
+    <!-- ── Global Absolute Selection & Copy Protection ── -->
+    <style>
+      *, *::before, *::after {
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+        -webkit-user-drag: none !important;
+        -webkit-touch-callout: none !important;
+      }
+      ::selection {
+        background: transparent !important;
+        color: inherit !important;
+      }
+      ::-moz-selection {
+        background: transparent !important;
+        color: inherit !important;
+      }
+      input, textarea, [contenteditable="true"] {
+        -webkit-user-select: text !important;
+        -moz-user-select: text !important;
+        -ms-user-select: text !important;
+        user-select: text !important;
+      }
+      input::selection, textarea::selection {
+        background: #3b82f6 !important;
+        color: #ffffff !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

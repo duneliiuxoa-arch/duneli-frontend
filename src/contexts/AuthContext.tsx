@@ -1,10 +1,10 @@
-// Auth Context Provider
+// Supabase Real Auth Context Provider
 import React, { createContext, useContext, ReactNode } from 'react';
-import { User } from 'firebase/auth';
 import { useAuth } from '../hooks/useAuth';
+import { SupabaseUserProfile } from '../services/authService';
 
 interface AuthContextType {
-  user: User | null;
+  user: SupabaseUserProfile | null;
   anonymousId: string | null;
   loading: boolean;
   isGuest: boolean;
