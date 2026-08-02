@@ -1,8 +1,10 @@
 import { Search, Loader, AlertCircle, CalendarPlus, Plus, Radio, Clock } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Theme, Discussion, Language } from '../types';
 import { themes } from '../config/themes';
 import { motion, AnimatePresence } from 'motion/react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface SearchBarProps {
   currentTheme: Theme;
@@ -11,6 +13,7 @@ interface SearchBarProps {
   isLoggedIn: boolean;
   onScheduleDiscussion: (title: string) => void;
   onLoginPrompt: () => void;
+  onJoinDiscussion?: (id: string) => void;
 }
 
 export function SearchBar({ 
@@ -19,7 +22,8 @@ export function SearchBar({
   selectedLanguage,
   isLoggedIn,
   onScheduleDiscussion,
-  onLoginPrompt
+  onLoginPrompt,
+  onJoinDiscussion,
 }: SearchBarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -29,35 +33,78 @@ export function SearchBar({
   }>({ live: [], upcoming: [] });
   const [showResults, setShowResults] = useState(false);
   const theme = themes[currentTheme];
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (searchQuery.length >= 2) {
-      setIsSearching(true);
-      
-      const timer = setTimeout(() => {
-        let discussionsToSearch = allDiscussions;
-        if (selectedLanguage !== 'All') {
-          discussionsToSearch = allDiscussions.filter(d => d.language === selectedLanguage);
-        }
-        
-        const similar = discussionsToSearch.filter(d =>
-          d.title.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-        
-        const live = similar.filter(d => d.status === 'live');
-        const upcoming = similar.filter(d => d.status === 'upcoming');
-        
-        setSimilarDiscussions({ live, upcoming });
-        setIsSearching(false);
-        setShowResults(true);
-      }, 200);
-
-      return () => clearTimeout(timer);
-    } else {
+    if (searchQuery.length < 2) {
       setSimilarDiscussions({ live: [], upcoming: [] });
       setShowResults(false);
       setIsSearching(false);
+      return;
     }
+
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      // 1. Search in local allDiscussions first
+      let discussionsToSearch = allDiscussions;
+      if (selectedLanguage !== 'All') {
+        discussionsToSearch = allDiscussions.filter(d => d.language === selectedLanguage);
+      }
+      const localMatches = discussionsToSearch.filter(d =>
+        d.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      // 2. Also search backend (catches topics not yet in state)
+      let backendMatches: Discussion[] = [];
+      try {
+        if (abortRef.current) abortRef.current.abort();
+        abortRef.current = new AbortController();
+        const res = await fetch(
+          `${API_URL}/api/discussions?status=ALL&limit=50`,
+          { signal: abortRef.current.signal }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const topics = data.topics || [];
+          backendMatches = topics
+            .filter((t: any) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+            .map((t: any) => ({
+              id:            t.id,
+              title:         t.title,
+              category:      'General',
+              language:      'English',
+              status:        t.meeting?.status === 'SCHEDULED' ? 'live' : 'upcoming',
+              interestCount: t.voteCount || 0,
+              scheduledTime: t.meeting?.meetingDate ? new Date(t.meeting.meetingDate) : undefined,
+              startedTime:   t.meeting?.meetingDate ? new Date(t.meeting.meetingDate) : new Date(),
+              duration:      60,
+              hostId:        t.createdBy?.id || '',
+              hostName:      t.createdBy?.name || 'Host',
+              listenerCount: t.activeAttendees || 0,
+              speakerCount:  0,
+              hasUserInterest: t.hasUserVoted || false,
+            } as Discussion));
+        }
+      } catch (e: any) {
+        if (e.name !== 'AbortError') console.warn('Search backend error:', e);
+      }
+
+      // 3. Merge — deduplicate by id, prefer local data
+      const localIds = new Set(localMatches.map(d => d.id));
+      const merged = [
+        ...localMatches,
+        ...backendMatches.filter(d => !localIds.has(d.id)),
+      ];
+
+      setSimilarDiscussions({
+        live:     merged.filter(d => d.status === 'live'),
+        upcoming: merged.filter(d => d.status === 'upcoming'),
+      });
+      setIsSearching(false);
+      setShowResults(true);
+    }, 250);
+
+    return () => clearTimeout(timer);
   }, [searchQuery, allDiscussions, selectedLanguage]);
 
   const handleScheduleDiscussion = () => {
@@ -137,7 +184,11 @@ export function SearchBar({
                     {similarDiscussions.live.map((discussion) => (
                       <div
                         key={discussion.id}
-                        className="px-6 py-3.5 hover:bg-blue-50/40 text-left transition-colors flex items-center justify-between gap-4"
+                        onClick={() => {
+                          if (!isLoggedIn) { onLoginPrompt(); return; }
+                          if (onJoinDiscussion) { onJoinDiscussion(discussion.id); setShowResults(false); setSearchQuery(''); }
+                        }}
+                        className="px-6 py-3.5 hover:bg-blue-50/40 text-left transition-colors flex items-center justify-between gap-4 cursor-pointer"
                       >
                         <div className="flex-1 min-w-0">
                           <h4 className="font-extrabold text-sm text-[#1A1A2E] truncate">

@@ -375,6 +375,7 @@ export function ShutterDrawer({ discussions, currentTheme, isLoggedIn, onJoinDis
                 isLoggedIn={isLoggedIn}
                 onScheduleDiscussion={onScheduleDiscussion}
                 onLoginPrompt={onLoginPrompt}
+                onJoinDiscussion={(id) => { toggleShutter(); onJoinDiscussion(id); }}
               />
 
               <div className="mt-6">
