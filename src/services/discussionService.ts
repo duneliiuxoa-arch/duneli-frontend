@@ -1,133 +1,315 @@
-// =============================================================
-// services/discussionService.ts — Real API calls to Duneli backend
-// =============================================================
-import { supabase } from '../lib/supabase';
+// Discussion Service
+import {
+  collection,
+  doc,
+  addDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+  deleteDoc,
+  increment,
+} from 'firebase/firestore';
+import { logEvent } from 'firebase/analytics';
+import { db, analytics } from '../lib/firebase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-// Auth token helper
-async function getAuthHeader(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) return {};
-  return { Authorization: `Bearer ${session.access_token}` };
+export interface Topic {
+  id: string;
+  title: string;
+  category: string;
+  createdBy: string;
+  createdAt: Timestamp;
+  scheduledAt: Timestamp | null;
+  status: 'live' | 'upcoming' | 'ended';
+  interestCount: number;
 }
 
-// ── Fetch all active discussions ──────────────────────────────
-export async function fetchDiscussions(status = 'ACTIVE') {
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_URL}/api/discussions?status=${status}`, { headers });
-    if (!res.ok) throw new Error('Failed to fetch discussions');
-    const data = await res.json();
-    return data.topics || [];
-  } catch (err) {
-    console.error('[discussionService] fetchDiscussions error:', err);
-    return [];
-  }
+export interface Discussion {
+  id: string;
+  topicId: string;
+  startedAt: Timestamp;
+  endedAt: Timestamp | null;
+  agoraChannelName: string;
+  status: 'live' | 'ended';
 }
 
-// ── Create a new topic ────────────────────────────────────────
-export async function createTopic(title: string, description?: string) {
+export interface Participant {
+  id: string;
+  discussionId: string;
+  userId: string;
+  role: 'listener' | 'speaker' | 'debater';
+  joinedAt: Timestamp;
+}
+
+// Create a new topic
+export const createTopic = async (
+  title: string,
+  category: string,
+  userId: string,
+  scheduledAt: Date | null = null
+): Promise<string> => {
   try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_URL}/api/discussions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify({ title, description }),
+    const topicRef = await addDoc(collection(db, 'topics'), {
+      title,
+      category,
+      createdBy: userId,
+      createdAt: serverTimestamp(),
+      scheduledAt: scheduledAt ? Timestamp.fromDate(scheduledAt) : null,
+      status: scheduledAt ? 'upcoming' : 'live',
+      interestCount: 0,
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to create topic');
+
+    return topicRef.id;
+  } catch (error) {
+    console.error('Error creating topic:', error);
+    throw error;
+  }
+};
+
+// Get live topics
+export const getLiveTopics = async (): Promise<Topic[]> => {
+  try {
+    const q = query(
+      collection(db, 'topics'),
+      where('status', '==', 'live'),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Topic[];
+  } catch (error) {
+    console.error('Error getting live topics:', error);
+    throw error;
+  }
+};
+
+// Get upcoming topics
+export const getUpcomingTopics = async (): Promise<Topic[]> => {
+  try {
+    const q = query(
+      collection(db, 'topics'),
+      where('status', '==', 'upcoming'),
+      orderBy('scheduledAt', 'asc'),
+      limit(20)
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Topic[];
+  } catch (error) {
+    console.error('Error getting upcoming topics:', error);
+    throw error;
+  }
+};
+
+// Subscribe to live topics (real-time)
+export const subscribeLiveTopics = (
+  callback: (topics: Topic[]) => void
+): (() => void) => {
+  const q = query(
+    collection(db, 'topics'),
+    where('status', '==', 'live'),
+    orderBy('createdAt', 'desc'),
+    limit(20)
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const topics = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Topic[];
+    callback(topics);
+  });
+};
+
+// Create a discussion from a topic
+export const createDiscussion = async (topicId: string): Promise<string> => {
+  try {
+    const channelName = `discussion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const discussionRef = await addDoc(collection(db, 'discussions'), {
+      topicId,
+      startedAt: serverTimestamp(),
+      endedAt: null,
+      agoraChannelName: channelName,
+      status: 'live',
+    });
+
+    // Update topic status to live
+    await updateDoc(doc(db, 'topics', topicId), {
+      status: 'live',
+    });
+
+    if (analytics) {
+      logEvent(analytics, 'meeting_started', {
+        discussion_id: discussionRef.id,
+        topic_id: topicId,
+      });
     }
-    const data = await res.json();
-    return data.topic;
-  } catch (err) {
-    console.error('[discussionService] createTopic error:', err);
-    throw err;
-  }
-}
 
-// ── Fetch topics created by the logged-in user ───────────────
-export async function fetchMyTopics() {
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_URL}/api/users/me/topics`, { headers });
-    if (!res.ok) throw new Error('Failed to fetch my topics');
-    return (await res.json()).topics || [];
-  } catch (err) {
-    console.error('[discussionService] fetchMyTopics error:', err);
-    return [];
+    return discussionRef.id;
+  } catch (error) {
+    console.error('Error creating discussion:', error);
+    throw error;
   }
-}
+};
 
-// ── Fetch topics voted/supported by the logged-in user ───────
-export async function fetchSupportedTopics() {
+// Get discussion by ID
+export const getDiscussion = async (discussionId: string): Promise<Discussion | null> => {
   try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_URL}/api/users/me/votes`, { headers });
-    if (!res.ok) throw new Error('Failed to fetch supported topics');
-    return (await res.json()).votes || [];
-  } catch (err) {
-    console.error('[discussionService] fetchSupportedTopics error:', err);
-    return [];
+    const discussionRef = doc(db, 'discussions', discussionId);
+    const discussionDoc = await getDoc(discussionRef);
+
+    if (discussionDoc.exists()) {
+      return {
+        id: discussionDoc.id,
+        ...discussionDoc.data(),
+      } as Discussion;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error getting discussion:', error);
+    throw error;
   }
-}
+};
 
-// ── Fetch meetings attended by the logged-in user ────────────
-export async function fetchMyActivity() {
+// Join discussion as participant
+export const joinDiscussion = async (
+  discussionId: string,
+  userId: string,
+  role: 'listener' | 'speaker' | 'debater'
+): Promise<string> => {
   try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_URL}/api/users/me/activity`, { headers });
-    if (!res.ok) throw new Error('Failed to fetch activity');
-    return (await res.json()).attendances || [];
-  } catch (err) {
-    console.error('[discussionService] fetchMyActivity error:', err);
-    return [];
-  }
-}
-
-// ── Join a meeting (records attendee in DB) ───────────────────
-export async function joinMeeting(topicId: string) {
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_URL}/api/discussions/${topicId}/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
+    const participantRef = await addDoc(collection(db, 'participants'), {
+      discussionId,
+      userId,
+      role,
+      joinedAt: serverTimestamp(),
     });
-    if (!res.ok) throw new Error('Failed to join meeting');
-    return await res.json();
-  } catch (err) {
-    console.error('[discussionService] joinMeeting error:', err);
-  }
-}
 
-// ── Leave a meeting (records leftAt in DB) ────────────────────
-export async function leaveMeeting(topicId: string) {
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_URL}/api/discussions/${topicId}/leave`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
+    // Log activity
+    await addDoc(collection(db, 'activityLogs'), {
+      userId,
+      type: 'joined',
+      discussionId,
+      timestamp: serverTimestamp(),
     });
-    if (!res.ok) throw new Error('Failed to leave meeting');
-    return await res.json();
-  } catch (err) {
-    console.error('[discussionService] leaveMeeting error:', err);
-  }
-}
 
-// ── Vote on a topic ───────────────────────────────────────────
-export async function voteTopic(topicId: string) {
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_URL}/api/discussions/${topicId}/vote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
-    });
-    if (!res.ok) throw new Error('Failed to vote');
-    return await res.json();
-  } catch (err) {
-    console.error('[discussionService] voteTopic error:', err);
-    throw err;
+    if (analytics) {
+      logEvent(analytics, 'join_discussion', {
+        discussion_id: discussionId,
+        role,
+      });
+    }
+
+    return participantRef.id;
+  } catch (error) {
+    console.error('Error joining discussion:', error);
+    throw error;
   }
-}
+};
+
+// Leave discussion
+export const leaveDiscussion = async (
+  participantId: string,
+  discussionId: string,
+  userId: string
+): Promise<void> => {
+  try {
+    // Delete participant record
+    await deleteDoc(doc(db, 'participants', participantId));
+
+    // Log activity
+    await addDoc(collection(db, 'activityLogs'), {
+      userId,
+      type: 'left',
+      discussionId,
+      timestamp: serverTimestamp(),
+    });
+
+    if (analytics) {
+      logEvent(analytics, 'leave_discussion', {
+        discussion_id: discussionId,
+      });
+    }
+  } catch (error) {
+    console.error('Error leaving discussion:', error);
+    throw error;
+  }
+};
+
+// Get participants count (real-time)
+export const subscribeParticipantCount = (
+  discussionId: string,
+  callback: (count: number) => void
+): (() => void) => {
+  const q = query(
+    collection(db, 'participants'),
+    where('discussionId', '==', discussionId)
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    callback(snapshot.size);
+  });
+};
+
+// Express interest in topic
+export const expressInterest = async (topicId: string, userId: string): Promise<void> => {
+  try {
+    // Increment interest count
+    await updateDoc(doc(db, 'topics', topicId), {
+      interestCount: increment(1),
+    });
+
+    // Log activity
+    await addDoc(collection(db, 'activityLogs'), {
+      userId,
+      type: 'expressed_interest',
+      topicId,
+      timestamp: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error expressing interest:', error);
+    throw error;
+  }
+};
+
+// End discussion
+export const endDiscussion = async (discussionId: string): Promise<void> => {
+  try {
+    await updateDoc(doc(db, 'discussions', discussionId), {
+      endedAt: serverTimestamp(),
+      status: 'ended',
+    });
+
+    // Get topic ID and update status
+    const discussion = await getDiscussion(discussionId);
+    if (discussion) {
+      await updateDoc(doc(db, 'topics', discussion.topicId), {
+        status: 'ended',
+      });
+    }
+
+    if (analytics) {
+      logEvent(analytics, 'meeting_ended', {
+        discussion_id: discussionId,
+      });
+    }
+  } catch (error) {
+    console.error('Error ending discussion:', error);
+    throw error;
+  }
+};

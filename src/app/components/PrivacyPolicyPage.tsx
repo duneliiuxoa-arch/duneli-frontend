@@ -1,193 +1,270 @@
+import { useEffect } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import { ArrowLeft, Shield, Mic, Database, Share2, Lock, Trash2, Baby, Globe2, RefreshCcw, Mail } from 'lucide-react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Shield, Eye, Lock, Database, Bell, Mail, Globe, Trash2 } from 'lucide-react';
-import { Theme } from '../types';
-import { themes } from '../config/themes';
+import duneliLogo from '../../assets/logo.png';
 
-interface Props {
-  currentTheme: Theme;
+interface PrivacyPolicyPageProps {
   onBack: () => void;
 }
 
-const SECTIONS = [
-  {
-    icon: <Database size={18} />,
-    title: 'Information We Collect',
-    content: [
-      'Account information: name, email address, and profile picture when you sign in via Google or phone.',
-      'Anonymous ID (DNL-XXXX): auto-generated for every user to protect your real identity in discussions.',
-      'Participation data: which discussions you join, your role (listener/speaker/debater), and timestamps.',
-      'Votes and interests: topics you vote on or mark as interesting.',
-      'Chat messages: messages sent during live meetings, stored securely.',
-      'Device info: browser type, OS, and IP address for security and abuse prevention only.',
-    ],
-  },
-  {
-    icon: <Eye size={18} />,
-    title: 'How We Use Your Information',
-    content: [
-      'To provide and improve the Duneli live debate experience.',
-      'To display your anonymous ID (not your real name) in meetings and discussions.',
-      'To send notifications about discussions you follow (only if you opt in).',
-      'To detect and prevent spam, abuse, and security threats.',
-      'To generate anonymized analytics about platform usage — never sold to third parties.',
-      'Discussion summaries from completed meetings are published on Dunora as articles, without identifying individual users.',
-    ],
-  },
-  {
-    icon: <Globe size={18} />,
-    title: 'Information We Share',
-    content: [
-      'We do NOT sell your personal data to anyone, ever.',
-      'Supabase (our database provider): stores your account and discussion data securely.',
-      'Agora (our audio provider): processes real-time audio during live meetings. No audio is recorded or stored.',
-      'Discussion summaries (not personal data) are shared with Dunora to create articles.',
-      'We may share data with law enforcement only when legally required.',
-    ],
-  },
-  {
-    icon: <Lock size={18} />,
-    title: 'Data Security',
-    content: [
-      'All data is encrypted in transit using HTTPS/TLS.',
-      'Your password is never stored — we use Google OAuth and phone OTP only.',
-      'Database access is restricted and monitored.',
-      'Admin panel is not indexed by search engines and is password-protected.',
-      'We regularly audit our security practices.',
-    ],
-  },
-  {
-    icon: <Bell size={18} />,
-    title: 'Cookies & Storage',
-    content: [
-      'We use localStorage and sessionStorage to remember your theme preference and session state.',
-      'No third-party advertising cookies are used.',
-      'Supabase uses a secure session cookie for authentication.',
-      'You can clear all stored data by logging out and clearing your browser storage.',
-    ],
-  },
-  {
-    icon: <Trash2 size={18} />,
-    title: 'Your Rights',
-    content: [
-      'Access: You can request a copy of your personal data at any time.',
-      'Deletion: You can request deletion of your account and all associated data.',
-      'Correction: You can update your profile information at any time.',
-      'Opt-out: You can disable notifications from your profile settings.',
-      'To exercise any right, email us at: privacy@duneli.com',
-    ],
-  },
-  {
-    icon: <Mail size={18} />,
-    title: 'Contact Us',
-    content: [
-      'If you have questions about this Privacy Policy, contact us:',
-      'Email: privacy@duneli.com',
-      'Platform: Duneli — Live Debate Platform',
-      'Operated by: IUXOA Creative Studio',
-      'This policy was last updated: June 2026',
-    ],
-  },
-];
+const LAST_UPDATED = 'July 31, 2026';
 
-export function PrivacyPolicyPage({ currentTheme, onBack }: Props) {
-  const theme = themes[currentTheme];
+export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
 
   return (
     <div
-      className={`min-h-screen ${theme.textColor}`}
-      style={{ background: theme.background, fontFamily: 'var(--font-body)' }}
+      className="min-h-screen w-full"
+      style={{ background: 'linear-gradient(180deg, #ffffff 0%, #f5f7ff 100%)', fontFamily: 'var(--font-body)' }}
     >
-      {/* ── Header ── */}
-      <div className={`sticky top-0 z-50 ${theme.cardStyle} border-b`}
-        style={{ borderColor: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)' }}>
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button onClick={onBack}
-            className={`flex items-center gap-2 text-sm opacity-70 hover:opacity-100 transition-opacity ${theme.textColor}`}>
-            <ArrowLeft size={16} /> Back
+      {/* Top bar */}
+      <div className="sticky top-0 z-20 border-b border-blue-100 bg-white/80 backdrop-blur-md">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-[#3B5BF6] hover:text-[#7C3AED] transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
           </button>
-          <div className="flex items-center gap-2">
-            <Shield size={18} style={{ color: '#6366f1' }} />
-            <span className="font-semibold text-sm">Privacy Policy</span>
-          </div>
+          <img src={duneliLogo} alt="Duneli" className="h-7 w-auto object-contain select-none" draggable={false} />
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-10 sm:px-6 sm:py-16">
-        {/* ── Hero ── */}
-        <motion.div className="text-center mb-10 sm:mb-16"
-          initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl mb-5 sm:mb-6"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #06b6d4)', boxShadow: '0 0 40px rgba(99,102,241,0.3)' }}>
-            <Shield size={24} className="text-white" />
+      <div className="max-w-4xl mx-auto px-6 py-12">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="mb-10"
+        >
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-md mb-5"
+            style={{ background: 'linear-gradient(135deg, #3B5BF6, #7C3AED)' }}
+          >
+            <Shield className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4" style={{ fontFamily: 'var(--font-heading)' }}>
+          <h1
+            className="text-3xl sm:text-4xl font-black text-[#1A1A2E] tracking-tight"
+            style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}
+          >
             Privacy Policy
           </h1>
-          <p className="text-sm sm:text-lg opacity-60 max-w-xl mx-auto leading-relaxed">
-            We believe in transparency. Here's exactly what data we collect,
-            why we collect it, and how we protect it.
+          <p className="text-[#1A1A2E]/50 text-sm mt-2">Last updated: {LAST_UPDATED}</p>
+          <p className="text-[#1A1A2E]/70 text-base leading-relaxed mt-5 max-w-2xl">
+            Duneli ("we", "us", "our") operates the Duneli mobile and web application (the "App"),
+            which provides anonymous, audio-based group discussions. This Privacy Policy explains
+            what information we collect, how we use and share it, and the choices and rights you
+            have. By using Duneli, you agree to the collection and use of information in
+            accordance with this policy.
           </p>
-          <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium"
-            style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
-            Last updated: June 2026
-          </div>
         </motion.div>
 
-        {/* ── Key promise banner ── */}
-        <motion.div className="mb-12 p-6 rounded-2xl"
-          style={{ background: 'rgba(52,211,153,0.07)', border: '1px solid rgba(52,211,153,0.2)' }}
-          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-              style={{ background: 'rgba(52,211,153,0.15)' }}>
-              <Shield size={15} style={{ color: '#34d399' }} />
-            </div>
-            <div>
-              <p className="font-semibold mb-1" style={{ color: '#34d399' }}>Our Promise</p>
-              <p className="text-sm opacity-75 leading-relaxed">
-                Duneli will <strong>never sell your data</strong> to advertisers or third parties.
-                Your real identity stays private — we use anonymous IDs (DNL-XXXX) in all public discussions.
-                Audio from live meetings is <strong>never recorded or stored</strong>.
-              </p>
-            </div>
-          </div>
-        </motion.div>
+        {/* Sections */}
+        <div className="space-y-10">
+          <Section icon={Database} color="#3B5BF6" title="1. Information We Collect">
+            <p>We collect the following categories of information:</p>
+            <ul className="list-disc pl-5 space-y-1.5 mt-2">
+              <li>
+                <strong>Account information:</strong> a display name/pseudonym, and if you sign in,
+                an email address or identifier provided by your sign-in method. Duneli
+                conversations themselves remain anonymous to other participants.
+              </li>
+              <li>
+                <strong>Audio data:</strong> with your permission, we access your device
+                microphone to transmit your voice during live discussions. Audio is streamed in
+                real time through our audio infrastructure provider and is not stored after a
+                session ends unless a discussion host enables recording, in which case you will be
+                notified before joining.
+              </li>
+              <li>
+                <strong>Content you create:</strong> discussion titles, topics, comments, "shown
+                interest" actions, and feedback you submit after a discussion.
+              </li>
+              <li>
+                <strong>Usage and diagnostic data:</strong> app interactions, session duration,
+                crash logs, and performance data, collected automatically to help us maintain and
+                improve the App.
+              </li>
+              <li>
+                <strong>Device and log information:</strong> device model, operating system,
+                unique device identifiers, IP address, and general (non-precise) location derived
+                from IP address for language/region defaults.
+              </li>
+            </ul>
+          </Section>
 
-        {/* ── Sections ── */}
-        <div className="space-y-5 sm:space-y-8">
-          {SECTIONS.map((section, i) => (
-            <motion.div key={section.title}
-              className={`${theme.cardStyle} rounded-2xl p-5 sm:p-8`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + i * 0.07 }}>
-              <div className="flex items-center gap-3 mb-4 sm:mb-5">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>
-                  {section.icon}
-                </div>
-                <h2 className="text-base sm:text-lg font-bold">{section.title}</h2>
-              </div>
-              <ul className="space-y-2.5 sm:space-y-3">
-                {section.content.map((item, j) => (
-                  <li key={j} className="flex items-start gap-3 text-xs sm:text-sm opacity-75 leading-relaxed">
-                    <span className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0"
-                      style={{ background: '#6366f1' }} />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-          ))}
+          <Section icon={Mic} color="#7C3AED" title="2. Permissions We Request">
+            <p>Duneli requests the following device permissions, only for the stated purpose:</p>
+            <ul className="list-disc pl-5 space-y-1.5 mt-2">
+              <li><strong>Microphone:</strong> required to speak in live audio discussions.</li>
+              <li><strong>Notifications:</strong> to alert you when a discussion you're interested in starts or is about to begin.</li>
+            </ul>
+            <p className="mt-2">
+              You can deny or revoke these permissions at any time in your device settings;
+              doing so may limit certain features (for example, you won't be able to speak
+              without microphone access).
+            </p>
+          </Section>
+
+          <Section icon={Share2} color="#F97316" title="3. How We Use and Share Information">
+            <p>We use the information we collect to:</p>
+            <ul className="list-disc pl-5 space-y-1.5 mt-2">
+              <li>Operate, maintain, and provide the core features of the App;</li>
+              <li>Connect you to live audio rooms and route real-time audio between participants;</li>
+              <li>Personalize discovery of discussions (categories, language, trending topics);</li>
+              <li>Send service notifications you have opted into;</li>
+              <li>Monitor, detect, and prevent abuse, harassment, spam, and violations of our Community Guidelines;</li>
+              <li>Analyze aggregated usage trends to improve the App.</li>
+            </ul>
+            <p className="mt-3">
+              We do <strong>not</strong> sell your personal information. We share information only with:
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5 mt-2">
+              <li>
+                <strong>Service providers</strong> who process data on our behalf, such as our
+                cloud hosting and database provider (Firebase/Google Cloud) and our real-time
+                audio communication provider (Agora), strictly to deliver the App's functionality;
+              </li>
+              <li>
+                <strong>Other participants</strong> in a discussion, limited to your chosen
+                display name, spoken audio, and any content you post — never your real identity
+                unless you choose to reveal it;
+              </li>
+              <li>
+                <strong>Legal and safety authorities</strong>, where required to comply with law,
+                enforce our terms, or protect the rights, safety, and property of Duneli, our
+                users, or the public.
+              </li>
+            </ul>
+          </Section>
+
+          <Section icon={Lock} color="#3B5BF6" title="4. Data Security & Retention">
+            <p>
+              We use industry-standard safeguards — including encryption in transit, access
+              controls, and secure cloud infrastructure — to protect your information. However, no
+              method of transmission or storage is 100% secure, and we cannot guarantee absolute
+              security.
+            </p>
+            <p className="mt-2">
+              We retain account and content data for as long as your account is active or as
+              needed to provide the App. Live audio itself is not retained after a session unless
+              recording was explicitly enabled and disclosed. Diagnostic and crash logs are
+              retained for a limited period for troubleshooting purposes.
+            </p>
+          </Section>
+
+          <Section icon={Trash2} color="#7C3AED" title="5. Your Rights & Account/Data Deletion">
+            <p>
+              Depending on your location, you may have the right to access, correct, export, or
+              delete your personal information, and to object to or restrict certain processing.
+            </p>
+            <p className="mt-2">
+              You can request deletion of your account and associated personal data at any time by:
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5 mt-2">
+              <li>Using the <strong>Delete Account</strong> option in the App's account settings (where available); or</li>
+              <li>
+                Emailing <a href="mailto:Iuxoa.officail@gmail.com" className="text-[#3B5BF6] font-semibold underline underline-offset-2">Iuxoa.officail@gmail.com</a> with the subject line "Account Deletion Request".
+              </li>
+            </ul>
+            <p className="mt-2">
+              We will act on verified deletion requests within 30 days, except where we are
+              required to retain certain information for legal, security, or fraud-prevention
+              purposes.
+            </p>
+          </Section>
+
+          <Section icon={Baby} color="#F97316" title="6. Children's Privacy">
+            <p>
+              Duneli is not directed to children under 13 (or the minimum age required in your
+              country), and we do not knowingly collect personal information from children. If we
+              learn that we have collected personal information from a child without verified
+              parental consent, we will delete that information promptly. If you believe a child
+              has provided us with personal information, please contact us using the details below.
+            </p>
+          </Section>
+
+          <Section icon={Globe2} color="#3B5BF6" title="7. International Data Transfers">
+            <p>
+              Your information may be processed and stored on servers located outside of your
+              country of residence, including in the United States, where our service providers
+              operate. We take steps to ensure appropriate safeguards are in place consistent with
+              applicable data protection laws whenever data is transferred internationally.
+            </p>
+          </Section>
+
+          <Section icon={RefreshCcw} color="#7C3AED" title="8. Changes to This Policy">
+            <p>
+              We may update this Privacy Policy from time to time to reflect changes in our
+              practices or for legal, operational, or regulatory reasons. We will notify you of
+              material changes by updating the "Last updated" date above and, where appropriate,
+              through an in-app notice. Continued use of the App after changes take effect
+              constitutes acceptance of the revised policy.
+            </p>
+          </Section>
+
+          <Section icon={Mail} color="#F97316" title="9. Contact Us">
+            <p>
+              If you have questions, concerns, or requests regarding this Privacy Policy or your
+              personal information, please contact us at:
+            </p>
+            <p className="mt-2 font-semibold text-[#1A1A2E]">
+              Email: <a href="mailto:Iuxoa.officail@gmail.com" className="text-[#3B5BF6] underline underline-offset-2">Iuxoa.officail@gmail.com</a>
+            </p>
+          </Section>
         </div>
 
-        {/* ── Footer ── */}
-        <motion.div className="mt-16 text-center text-sm opacity-40"
-          initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} transition={{ delay: 0.8 }}>
-          <p>© 2026 Duneli · IUXOA Creative Studio · All rights reserved</p>
-          <p className="mt-1">This policy applies to the Duneli platform and its associated services.</p>
-        </motion.div>
+        {/* Footer note */}
+        <div className="mt-14 pt-8 border-t border-blue-100 text-center">
+          <p className="text-[#1A1A2E]/40 text-xs">
+            © {new Date().getFullYear()} Duneli. All rights reserved.
+          </p>
+          <button
+            onClick={onBack}
+            className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl text-white font-bold text-sm"
+            style={{ background: 'linear-gradient(135deg, #3B5BF6, #7C3AED)' }}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Duneli
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+interface SectionProps {
+  icon: ComponentType<{ className?: string }>;
+  color: string;
+  title: string;
+  children: ReactNode;
+}
+
+function Section({ icon: Icon, color, title, children }: SectionProps) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.5 }}
+    >
+      <div className="flex items-center gap-3 mb-3">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: `${color}1A` }}
+        >
+          <Icon className="w-4.5 h-4.5" style={{ color }} />
+        </div>
+        <h2 className="text-lg font-extrabold text-[#1A1A2E]" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+          {title}
+        </h2>
+      </div>
+      <div className="text-[#1A1A2E]/70 text-sm leading-relaxed pl-12">{children}</div>
+    </motion.section>
   );
 }

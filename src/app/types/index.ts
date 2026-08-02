@@ -20,9 +20,9 @@ export type SortOption = 'trending' | 'newest' | 'mostInterested';
 
 export type DiscoveryMode = 'interest' | 'categories';
 
-export type Theme = 'aurora' | 'mist' | 'mint' | 'dream';
+export type Theme = 'futuristic' | 'duneli' | 'aurora' | 'mist' | 'mint' | 'dream';
 
-export type Page = 'entry' | 'homepage' | 'roleSelection' | 'meeting' | 'leaving' | 'myActivity' | 'myTopics' | 'supportedTopics' | 'savedTopics' | 'notifications' | 'privacy' | 'notFound';
+export type Page = 'entry' | 'homepage' | 'roleSelection' | 'meeting' | 'leaving' | 'privacyPolicy' | 'profile' | 'featureDetail' | 'myActivity' | 'myTopics' | 'supportedTopics' | 'savedTopics';
 
 export type Role = 'listener' | 'speaker' | 'debater';
 
@@ -40,12 +40,11 @@ export interface Discussion {
   currentSpeaker?: string;
   scheduledTime?: Date;
   startedTime?: Date;
-  duration?: number;
+  duration?: number; // minutes
   hostId: string;
   hostName: string;
   hasUserInterest?: boolean;
   hasUserSaved?: boolean;
-  meetingId?: string; // backend meeting ID for transcription
 }
 
 export interface HandRaiseRequest {

@@ -1,114 +1,150 @@
-// Speaking Queue Service — Supabase (replaces Firestore)
-import { supabase } from '../lib/supabase';
+// Speaking Queue Service
+import {
+  collection,
+  doc,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+  Timestamp,
+  getDocs,
+} from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../lib/firebase';
 
 export interface QueueEntry {
   id: string;
-  meetingId: string;
+  discussionId: string;
   userId: string;
-  requestedAt: string;
+  requestedAt: Timestamp;
   status: 'waiting' | 'speaking' | 'done';
 }
 
 // Raise hand to join speaking queue
-export const raiseHand = async (meetingId: string, userId: string): Promise<string> => {
-  // Check if already in queue
-  const { data: existing } = await supabase
-    .from('speaking_queue')
-    .select('id')
-    .eq('meetingId', meetingId)
-    .eq('userId', userId)
-    .in('status', ['waiting', 'speaking'])
-    .maybeSingle();
+export const raiseHand = async (
+  discussionId: string,
+  userId: string
+): Promise<string> => {
+  try {
+    // Check if user is already in queue
+    const q = query(
+      collection(db, 'speakingQueue'),
+      where('discussionId', '==', discussionId),
+      where('userId', '==', userId),
+      where('status', 'in', ['waiting', 'speaking'])
+    );
 
-  if (existing) throw new Error('Already in queue');
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      throw new Error('Already in queue');
+    }
 
-  const { data, error } = await supabase
-    .from('speaking_queue')
-    .insert({ meetingId, userId, status: 'waiting', requestedAt: new Date().toISOString() })
-    .select('id')
-    .single();
+    const queueRef = await addDoc(collection(db, 'speakingQueue'), {
+      discussionId,
+      userId,
+      requestedAt: serverTimestamp(),
+      status: 'waiting',
+    });
 
-  if (error) { console.error('Error raising hand:', error.message); throw error; }
-  return data.id;
+    return queueRef.id;
+  } catch (error) {
+    console.error('Error raising hand:', error);
+    throw error;
+  }
 };
 
 // Lower hand (remove from queue)
 export const lowerHand = async (queueId: string): Promise<void> => {
-  const { error } = await supabase.from('speaking_queue').delete().eq('id', queueId);
-  if (error) { console.error('Error lowering hand:', error.message); throw error; }
+  try {
+    await deleteDoc(doc(db, 'speakingQueue', queueId));
+  } catch (error) {
+    console.error('Error lowering hand:', error);
+    throw error;
+  }
 };
 
 // Subscribe to speaking queue (real-time)
 export const subscribeToQueue = (
-  meetingId: string,
+  discussionId: string,
   callback: (queue: QueueEntry[]) => void
 ): (() => void) => {
-  const fetchQueue = async () => {
-    const { data, error } = await supabase
-      .from('speaking_queue')
-      .select('*')
-      .eq('meetingId', meetingId)
-      .in('status', ['waiting', 'speaking'])
-      .order('requestedAt', { ascending: true });
+  const q = query(
+    collection(db, 'speakingQueue'),
+    where('discussionId', '==', discussionId),
+    where('status', 'in', ['waiting', 'speaking']),
+    orderBy('requestedAt', 'asc')
+  );
 
-    if (!error) callback(data as QueueEntry[]);
-  };
-
-  fetchQueue();
-
-  const channel = supabase
-    .channel(`queue-${meetingId}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'speaking_queue', filter: `meetingId=eq.${meetingId}` }, fetchQueue)
-    .subscribe();
-
-  return () => { supabase.removeChannel(channel); };
+  return onSnapshot(q, (snapshot) => {
+    const queue = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as QueueEntry[];
+    callback(queue);
+  });
 };
 
 // Mark user as speaking
-export const markAsSpeaking = async (queueId: string): Promise<void> => {
-  const { error } = await supabase
-    .from('speaking_queue')
-    .update({ status: 'speaking' })
-    .eq('id', queueId);
+export const markAsSpeaking = async (
+  queueId: string,
+  discussionId: string
+): Promise<void> => {
+  try {
+    await updateDoc(doc(db, 'speakingQueue', queueId), {
+      status: 'speaking',
+    });
 
-  if (error) { console.error('Error marking as speaking:', error.message); throw error; }
-  // Timer logic handled by backend (Duneli database server)
+    // Start the 3-minute timer via Cloud Function
+    const startTimer = httpsCallable(functions, 'startSpeakerTimer');
+    await startTimer({
+      queueId,
+      discussionId,
+    });
+  } catch (error) {
+    console.error('Error marking as speaking:', error);
+    throw error;
+  }
 };
 
 // Mark user as done speaking
 export const markAsDone = async (queueId: string): Promise<void> => {
-  const { error } = await supabase
-    .from('speaking_queue')
-    .update({ status: 'done' })
-    .eq('id', queueId);
+  try {
+    await updateDoc(doc(db, 'speakingQueue', queueId), {
+      status: 'done',
+    });
 
-  if (error) { console.error('Error marking as done:', error.message); throw error; }
+    // Note: The cleanup function will delete this entry
+  } catch (error) {
+    console.error('Error marking as done:', error);
+    throw error;
+  }
 };
 
-// Subscribe to current speaker
+// Get current speaker
 export const subscribeCurrentSpeaker = (
-  meetingId: string,
+  discussionId: string,
   callback: (speaker: QueueEntry | null) => void
 ): (() => void) => {
-  const fetchSpeaker = async () => {
-    const { data } = await supabase
-      .from('speaking_queue')
-      .select('*')
-      .eq('meetingId', meetingId)
-      .eq('status', 'speaking')
-      .order('requestedAt', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+  const q = query(
+    collection(db, 'speakingQueue'),
+    where('discussionId', '==', discussionId),
+    where('status', '==', 'speaking'),
+    orderBy('requestedAt', 'asc')
+  );
 
-    callback(data as QueueEntry | null);
-  };
-
-  fetchSpeaker();
-
-  const channel = supabase
-    .channel(`speaker-${meetingId}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'speaking_queue', filter: `meetingId=eq.${meetingId}` }, fetchSpeaker)
-    .subscribe();
-
-  return () => { supabase.removeChannel(channel); };
+  return onSnapshot(q, (snapshot) => {
+    if (snapshot.empty) {
+      callback(null);
+    } else {
+      const speaker = {
+        id: snapshot.docs[0].id,
+        ...snapshot.docs[0].data(),
+      } as QueueEntry;
+      callback(speaker);
+    }
+  });
 };

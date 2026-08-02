@@ -1,393 +1,621 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { EntryScreen } from './components/EntryScreen';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
-import { HappeningNow } from './components/HappeningNow';
-import { SearchBar } from './components/SearchBar';
-import { DiscoveryControls } from './components/DiscoveryControls';
-import { UpcomingDiscussions } from './components/UpcomingDiscussions';
-import { PhilosophyBanner } from './components/PhilosophyBanner';
 import { NotificationPanel } from './components/NotificationPanel';
 import { LoginModal } from './components/LoginModal';
 import { RoleSelectionPage } from './components/RoleSelectionPage';
 import { MeetingPage } from './components/MeetingPage';
 import { LeavingMeetingPage } from './components/LeavingMeetingPage';
+import { AuroraBackground } from './components/AuroraBackground';
+import { HowDuneliWorks3D } from './components/HowDuneliWorks3D';
+import { WhatIsDuneli } from './components/WhatIsDuneli';
+import { DunoraSection } from './components/DunoraSection';
+import { ShutterDrawer } from './components/ShutterDrawer';
+import { Footer } from './components/ui/footer-section';
 import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
-import { NotFoundPage } from './components/NotFoundPage';
-import { MyActivityPage, MyTopicsPage, SupportedTopicsPage, SavedTopicsPage, NotificationsPage } from './components/UserPages';
+import { AboutUsModal } from './components/AboutUsModal';
+import { TermsModal } from './components/TermsModal';
+import { CommunityGuidelinesModal } from './components/CommunityGuidelinesModal';
+import { HelpCenterModal } from './components/HelpCenterModal';
+import { FaqModal } from './components/FaqModal';
+import { SplashScreen } from './components/SplashScreen';
+import { ProfilePage } from './components/ProfilePage';
+import { FeatureDetailPage } from './components/FeatureDetailPage';
+import { MyActivityPage } from './components/MyActivityPage';
+import { MyTopicsPage } from './components/MyTopicsPage';
+import { SupportedTopicsPage } from './components/SupportedTopicsPage';
+import { SavedTopicsPage } from './components/SavedTopicsPage';
+import { mockDiscussions, mockNotifications, mockUser } from './data/mockData';
 import { Discussion, User, Notification, Theme, DiscoveryMode, Category, SortOption, Language, Page, Role } from './types';
 import { themes } from './config/themes';
-import { onAuthChange, checkRedirectResult } from '../services/authService';
-import { fetchDiscussions, createTopic, voteTopic, joinMeeting, leaveMeeting } from '../services/discussionService';
-import { supabase } from '../lib/supabase';
-
-// ── Not-logged-in placeholder ─────────────────────────────────
-const GUEST_USER: User = { id: 'guest', name: 'Guest', avatar: '', isLoggedIn: false };
-
-// ── Map backend topic → frontend Discussion ───────────────────
-function mapTopic(t: any): Discussion {
-  let status: Discussion['status'] = 'upcoming';
-  if (t.meeting) {
-    if (t.meeting.status === 'SCHEDULED') status = 'live';
-    else if (t.meeting.status === 'COMPLETED') status = 'ended';
-  }
-
-  // Host name: backend returns createdBy, not host
-  const hostName = t.createdBy?.name
-    || t.createdBy?.anonymousId
-    || t.host?.name
-    || 'Unknown';
-
-  // Listener count: only use activeAttendees (leftAt IS NULL = currently in session)
-  // Do NOT fallback to _count.attendees — that's total ever joined, not current
-  const listenerCount = (typeof t.activeAttendees === 'number' && t.activeAttendees > 0)
-    ? t.activeAttendees
-    : undefined;
-
-  return {
-    id:              t.id,
-    title:           t.title,
-    category:        (t.category as Discussion['category']) || 'Technology',
-    language:        (t.language as Discussion['language'])  || 'English',
-    status,
-    interestCount:   t.voteCount ?? t.topicScore?.voteCount ?? 0,
-    listenerCount,
-    speakerCount:    undefined, // comes from Agora presence, not DB
-    scheduledTime:   t.meeting?.meetingDate ? new Date(t.meeting.meetingDate) : undefined,
-    startedTime:     status === 'live' && t.meeting?.meetingDate ? new Date(t.meeting.meetingDate) : undefined,
-    hostId:          t.createdBy?.id   || t.host?.id   || '',
-    hostName,
-    hasUserInterest: t.hasUserVoted || false,
-    meetingId:       t.meeting?.id,
-  };
-}
-
-// ── Persist page across tab switches / reloads ───────────────
-const SAFE_PAGES: Page[] = ['homepage', 'myActivity', 'myTopics', 'supportedTopics', 'savedTopics', 'notifications'];
-
-function getPersistedPage(): Page {
-  try {
-    const saved = sessionStorage.getItem('duneli_page') as Page | null;
-    if (saved && SAFE_PAGES.includes(saved)) return saved;
-  } catch {}
-  return 'homepage';
-}
-
-function persistPage(page: Page) {
-  try {
-    if (SAFE_PAGES.includes(page)) sessionStorage.setItem('duneli_page', page);
-    else sessionStorage.removeItem('duneli_page');
-  } catch {}
-}
+import { initializeSecurityDeterrents } from '../services/securityDeterrents';
 
 export default function App() {
-  const [currentPage, setCurrentPageRaw] = useState<Page>(getPersistedPage);
+  // Splash Screen State
+  const [showSplash, setShowSplash] = useState(true);
+
+  // Page State
+  const [currentPage, setCurrentPage] = useState<Page>('homepage');
   const [selectedDiscussion, setSelectedDiscussion] = useState<Discussion | null>(null);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-
-  const setCurrentPage = useCallback((page: Page) => {
-    persistPage(page);
-    setCurrentPageRaw(page);
-  }, []);
-
-  const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
-    try { return (localStorage.getItem('duneli_theme') as Theme) || 'dream'; } catch { return 'dream'; }
-  });
-
-  const handleThemeChange = useCallback((t: Theme) => {
-    try { localStorage.setItem('duneli_theme', t); } catch {}
-    setCurrentTheme(t);
-  }, []);
-
-  // ── User — starts as guest (not logged in) ────────────────
-  const [user, setUser] = useState<User>(GUEST_USER);
-
-  const [discussions, setDiscussions] = useState<Discussion[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-
+  const [selectedFeatureTitle, setSelectedFeatureTitle] = useState<string>('100% Anonymous');
+  const [isShutterOpen, setIsShutterOpen] = useState(false);
+  
+  // Theme State - Nova Futuristic is default
+  const [currentTheme, setCurrentTheme] = useState<Theme>('futuristic');
+  
+  // User State
+  const [user, setUser] = useState<User>(mockUser);
+  
+  // Data State
+  const [discussions, setDiscussions] = useState<Discussion[]>(mockDiscussions);
+  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  
+  // Discovery State
   const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>('interest');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [selectedLanguage, setSelectedLanguage] = useState<Language | 'All'>('All');
   const [sortBy, setSortBy] = useState<SortOption>('trending');
+  
+  // Modal State
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showAboutUsModal, setShowAboutUsModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showFaqModal, setShowFaqModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
 
   const theme = themes[currentTheme];
 
-  const loadDiscussions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const topics = await fetchDiscussions('ALL');
-      setDiscussions(topics.map(mapTopic));
-    } catch (err) {
-      console.error('[App] Failed to load discussions:', err);
-    } finally {
-      setLoading(false);
+  // Always start at top of page on page refresh / initial load
+  useEffect(() => {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
     }
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
   }, []);
 
-  // ── Auth init ─────────────────────────────────────────────
+  // Prevent global text selection and element dragging everywhere on site except input elements
   useEffect(() => {
-    // On first load, check if there's a real Google session from OAuth redirect
-    checkRedirectResult().then(supabaseUser => {
-      if (supabaseUser) {
-        // Real Google user — log them in
-        setUser({
-          id:         supabaseUser.id,
-          name:       supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'User',
-          avatar:     supabaseUser.user_metadata?.avatar_url || '',
-          isLoggedIn: true,
-        });
-        setCurrentPage('homepage');
+    const clearSelection = () => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable)) {
+        return;
       }
-      // If null → no session or anonymous → stay on entry/homepage as guest
-    });
-
-    // Listen for auth state changes
-    // onAuthChange already filters out anonymous users — only real Google users reach here
-    const unsubscribe = onAuthChange((supabaseUser) => {
-      if (supabaseUser) {
-        // Real authenticated Google user
-        setUser({
-          id:         supabaseUser.id,
-          name:       supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'User',
-          avatar:     supabaseUser.user_metadata?.avatar_url || '',
-          isLoggedIn: true,
-        });
-        // If they were on entry screen, send to homepage
-        setCurrentPageRaw(prev => prev === 'entry' ? 'homepage' : prev);
-      } else {
-        // Logged out (or anonymous session — treated same as not logged in)
-        setUser(GUEST_USER);
+      if (window.getSelection) {
+        window.getSelection()?.removeAllRanges();
       }
-    });
+    };
 
-    return unsubscribe;
+    const preventSelect = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.closest('input') || target.closest('textarea'))) {
+        return;
+      }
+      clearSelection();
+      e.preventDefault();
+    };
+
+    window.addEventListener('selectstart', preventSelect);
+    window.addEventListener('dragstart', preventSelect);
+    window.addEventListener('selectionchange', clearSelection);
+
+    return () => {
+      window.removeEventListener('selectstart', preventSelect);
+      window.removeEventListener('dragstart', preventSelect);
+      window.removeEventListener('selectionchange', clearSelection);
+    };
   }, []);
 
+  // Initialize security deterrents (production only)
   useEffect(() => {
-    loadDiscussions();
-    const interval = setInterval(loadDiscussions, 60_000);
-    return () => clearInterval(interval);
-  }, [loadDiscussions]);
-
-  // ── Live current speaker via Supabase Realtime ─────────────
-  useEffect(() => {
-    if (discussions.length === 0) return;
-    const liveTopicIds = discussions.filter(d => d.status === 'live').map(d => d.id);
-    if (liveTopicIds.length === 0) return;
-
-    const channels = liveTopicIds.map(topicId => {
-      const ch = supabase.channel(`topic_presence:${topicId}`);
-      ch.on('broadcast', { event: 'current_speaker' }, ({ payload }: any) => {
-        setDiscussions(prev => prev.map(d =>
-          d.id === payload.topicId
-            ? { ...d, currentSpeaker: payload.name || undefined }
-            : d
-        ));
-      }).subscribe();
-      return ch;
+    // Initialize client-side security deterrents
+    // These are DETERRENTS only, not actual security
+    // Real security is in Firebase Rules and Cloud Functions
+    const cleanup = initializeSecurityDeterrents({
+      onDevToolsDetected: 'warn', // Options: 'warn' | 'logout' | 'custom'
+      // Uncomment below to auto-logout on DevTools detection
+      // onDevToolsDetected: 'logout',
+      // Or use custom handler:
+      // onDevToolsDetected: 'custom',
+      // customHandler: () => {
+      //   console.log('DevTools detected - custom action');
+      // },
     });
 
-    return () => { channels.forEach(ch => supabase.removeChannel(ch)); };
-  }, [discussions.length]);
+    // Cleanup on unmount
+    return cleanup;
+  }, []);
 
-  // ── Handlers ───────────────────────────────────────────────
-  const handleLogin = useCallback((supabaseUser?: any) => {
-    if (supabaseUser) {
-      setUser({
-        id:         supabaseUser.id,
-        name:       supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'User',
-        avatar:     supabaseUser.user_metadata?.avatar_url || '',
-        isLoggedIn: true,
-      });
+  // Handlers
+  const handleLogin = () => {
+    setUser({
+      id: 'user-123',
+      name: 'Jordan Smith',
+      avatar: '',
+      isLoggedIn: true,
+    });
+    if (currentPage === 'entry') {
+      setCurrentPage('homepage');
     }
+  };
+
+  const handleLogout = () => {
+    setUser(mockUser);
     setCurrentPage('homepage');
-  }, []);
+    // Reset user-specific states
+    setDiscussions(discussions.map(discussion => ({
+      ...discussion,
+      hasUserInterest: false,
+      hasUserSaved: false,
+    })));
+  };
 
-  const handleLogout = useCallback(() => {
-    setUser(GUEST_USER);
+  const handleContinueAsGuest = () => {
     setCurrentPage('homepage');
-  }, []);
+  };
 
-  const handleNavigate = useCallback((page: Page) => setCurrentPage(page), []);
-
-  const handleShowInterest = useCallback(async (discussionId: string) => {
-    setDiscussions(prev => prev.map(d =>
-      d.id === discussionId
-        ? { ...d, hasUserInterest: !d.hasUserInterest, interestCount: d.hasUserInterest ? d.interestCount - 1 : d.interestCount + 1 }
-        : d
+  const handleShowInterest = (discussionId: string) => {
+    setDiscussions(discussions.map(discussion =>
+      discussion.id === discussionId
+        ? {
+            ...discussion,
+            hasUserInterest: !discussion.hasUserInterest,
+            interestCount: discussion.hasUserInterest 
+              ? discussion.interestCount - 1 
+              : discussion.interestCount + 1,
+          }
+        : discussion
     ));
-    try {
-      await voteTopic(discussionId);
-    } catch {
-      setDiscussions(prev => prev.map(d =>
-        d.id === discussionId
-          ? { ...d, hasUserInterest: !d.hasUserInterest, interestCount: d.hasUserInterest ? d.interestCount - 1 : d.interestCount + 1 }
-          : d
-      ));
-    }
-  }, []);
+  };
 
-  const handleScheduleDiscussion = useCallback(async (title: string) => {
-    try {
-      const newTopic = await createTopic(title);
-      const newDiscussion = mapTopic(newTopic);
-      setDiscussions(prev => [newDiscussion, ...prev]);
-      const notif: Notification = {
-        id:              `notif-${Date.now()}`,
-        type:            'discussionScheduled',
-        message:         'Your discussion has been scheduled',
-        discussionId:    newDiscussion.id,
-        discussionTitle: newDiscussion.title,
-        timestamp:       new Date(),
-        read:            false,
-      };
-      setNotifications(prev => [notif, ...prev]);
-    } catch (err) {
-      console.error('[App] Failed to schedule discussion:', err);
-    }
-  }, []);
+  const handleScheduleDiscussion = (title: string) => {
+    const newDiscussion: Discussion = {
+      id: `discussion-${Date.now()}`,
+      title,
+      category: 'Technology',
+      language: selectedLanguage === 'All' ? 'English' : selectedLanguage,
+      status: 'upcoming',
+      interestCount: 1,
+      scheduledTime: new Date(Date.now() + 24 * 60 * 60000), // 1 day from now
+      duration: 60,
+      hostId: user.id,
+      hostName: user.name,
+      hasUserInterest: true,
+    };
+    setDiscussions([newDiscussion, ...discussions]);
+    
+    // Add notification
+    const newNotification: Notification = {
+      id: `notif-${Date.now()}`,
+      type: 'discussionScheduled',
+      message: 'Your discussion has been scheduled',
+      discussionId: newDiscussion.id,
+      discussionTitle: newDiscussion.title,
+      timestamp: new Date(),
+      read: false,
+    };
+    setNotifications([newNotification, ...notifications]);
+  };
 
-  const handleJoinDiscussion = useCallback((discussionId: string) => {
+  const handleJoinDiscussion = (discussionId: string) => {
     const discussion = discussions.find(d => d.id === discussionId);
-    if (discussion) { setSelectedDiscussion(discussion); setCurrentPage('roleSelection'); }
-  }, [discussions]);
+    if (discussion) {
+      setSelectedDiscussion(discussion);
+      setCurrentPage('roleSelection');
+    }
+  };
 
-  const handleSelectRole = useCallback((role: Role) => {
+  const handleSelectRole = (role: Role) => {
     setSelectedRole(role);
     setCurrentPage('meeting');
-    if (selectedDiscussion) joinMeeting(selectedDiscussion.id).catch(console.error);
-  }, [selectedDiscussion]);
+  };
 
-  const handleLeaveMeeting = useCallback(() => {
+  const handleLeaveMeeting = () => {
     setCurrentPage('leaving');
-    if (selectedDiscussion) leaveMeeting(selectedDiscussion.id).catch(console.error);
-  }, [selectedDiscussion]);
+  };
 
-  const handleReturnHome = useCallback(() => {
+  const handleReturnHome = () => {
     setCurrentPage('homepage');
     setSelectedDiscussion(null);
     setSelectedRole(null);
-    loadDiscussions();
-  }, [loadDiscussions]);
+  };
 
-  const handleBackFromRoleSelection = useCallback(() => { setCurrentPage('homepage'); setSelectedDiscussion(null); }, []);
-  const handleMarkAsRead            = useCallback((id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n)), []);
-  const handleMarkAllAsRead         = useCallback(() => setNotifications(prev => prev.map(n => ({ ...n, read: true }))), []);
-  const handleLoginPrompt           = useCallback(() => setShowLoginModal(true), []);
+  const handleGoToProfile = () => {
+    setCurrentPage('profile');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
 
-  // ── Filtered + sorted discussions ─────────────────────────
+  const handleBackFromRoleSelection = () => {
+    setCurrentPage('homepage');
+    setSelectedDiscussion(null);
+  };
+
+  const handleMarkAsRead = (notificationId: string) => {
+    setNotifications(notifications.map(n =>
+      n.id === notificationId ? { ...n, read: true } : n
+    ));
+  };
+
+  const handleMarkAllAsRead = () => {
+    setNotifications(notifications.map(n => ({ ...n, read: true })));
+  };
+
+  const handleLoginPrompt = () => {
+    setShowLoginModal(true);
+  };
+
+  // Filtered and sorted discussions
   const filteredDiscussions = useMemo(() => {
     let filtered = [...discussions];
-    if (selectedLanguage !== 'All') filtered = filtered.filter(d => d.language === selectedLanguage);
-    if (discoveryMode === 'categories' && selectedCategory !== 'All') filtered = filtered.filter(d => d.category === selectedCategory);
-    if (discoveryMode === 'interest') filtered = filtered.filter(d => d.status === 'upcoming');
+
+    // Filter by language
+    if (selectedLanguage !== 'All') {
+      filtered = filtered.filter(d => d.language === selectedLanguage);
+    }
+
+    // Filter by mode and category
+    if (discoveryMode === 'categories' && selectedCategory !== 'All') {
+      filtered = filtered.filter(d => d.category === selectedCategory);
+    }
+
+    if (discoveryMode === 'interest') {
+      // In interest mode, show upcoming discussions sorted by interest
+      filtered = filtered.filter(d => d.status === 'upcoming');
+    }
+
+    // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'trending':
-        case 'mostInterested': return b.interestCount - a.interestCount;
-        case 'newest': {
-          const aT = a.scheduledTime || a.startedTime || new Date(0);
-          const bT = b.scheduledTime || b.startedTime || new Date(0);
-          return bT.getTime() - aT.getTime();
-        }
-        default: return 0;
+          return b.interestCount - a.interestCount;
+        case 'newest':
+          const aTime = a.scheduledTime || a.startedTime || new Date(0);
+          const bTime = b.scheduledTime || b.startedTime || new Date(0);
+          return bTime.getTime() - aTime.getTime();
+        case 'mostInterested':
+          return b.interestCount - a.interestCount;
+        default:
+          return 0;
       }
     });
+
     return filtered;
   }, [discussions, discoveryMode, selectedCategory, selectedLanguage, sortBy]);
 
-  const savedDiscussions = discussions
-    .filter(d => d.hasUserSaved)
-    .map(d => ({ id: d.id, title: d.title, status: d.status, interestCount: d.interestCount }));
+  // Helper function to render active page view
+  const renderCurrentPage = () => {
+    // Entry Screen
+    if (currentPage === 'entry') {
+      return (
+        <EntryScreen
+          onLogin={handleLogin}
+          onContinueAsGuest={handleContinueAsGuest}
+        />
+      );
+    }
 
-  // ── Page renders ───────────────────────────────────────────
-  if (currentPage === 'entry')
-    return <EntryScreen onLogin={handleLogin} />;
+    // Role Selection Page
+    if (currentPage === 'roleSelection' && selectedDiscussion) {
+      return (
+        <RoleSelectionPage
+          discussion={selectedDiscussion}
+          currentTheme={currentTheme}
+          onSelectRole={handleSelectRole}
+          onBack={handleBackFromRoleSelection}
+        />
+      );
+    }
 
-  if (currentPage === 'myActivity')
-    return <MyActivityPage currentTheme={currentTheme} onBack={() => setCurrentPage('homepage')} />;
+    // Meeting Page
+    if (currentPage === 'meeting' && selectedDiscussion && selectedRole) {
+      return (
+        <MeetingPage
+          discussion={selectedDiscussion}
+          currentTheme={currentTheme}
+          userRole={selectedRole}
+          userName={user.name}
+          onLeave={handleLeaveMeeting}
+        />
+      );
+    }
 
-  if (currentPage === 'myTopics')
-    return <MyTopicsPage currentTheme={currentTheme} onBack={() => setCurrentPage('homepage')} />;
+    // Leaving Meeting Page
+    if (currentPage === 'leaving' && selectedDiscussion) {
+      return (
+        <LeavingMeetingPage
+          discussionTitle={selectedDiscussion.title}
+          currentTheme={currentTheme}
+          onReturnHome={handleReturnHome}
+        />
+      );
+    }
 
-  if (currentPage === 'supportedTopics')
-    return <SupportedTopicsPage currentTheme={currentTheme} onBack={() => setCurrentPage('homepage')} />;
+    // Privacy Policy Page
+    if (currentPage === 'privacyPolicy') {
+      return (
+        <PrivacyPolicyPage
+          onBack={() => {
+            setCurrentPage('homepage');
+            window.scrollTo(0, 0);
+          }}
+        />
+      );
+    }
 
-  if (currentPage === 'savedTopics')
-    return <SavedTopicsPage currentTheme={currentTheme} onBack={() => setCurrentPage('homepage')} savedDiscussions={savedDiscussions} />;
+    // Profile Page
+    if (currentPage === 'profile') {
+      return (
+        <ProfilePage
+          user={user}
+          currentTheme={currentTheme}
+          onBack={() => {
+            setCurrentPage('homepage');
+            window.scrollTo(0, 0);
+          }}
+          onSave={(updatedUser) => {
+            setUser(prev => ({ ...prev, ...updatedUser }));
+            setCurrentPage('homepage');
+            window.scrollTo(0, 0);
+          }}
+        />
+      );
+    }
 
-  if (currentPage === 'notifications')
-    return <NotificationsPage currentTheme={currentTheme} onBack={() => setCurrentPage('homepage')} notifications={notifications} onMarkAsRead={handleMarkAsRead} onMarkAllAsRead={handleMarkAllAsRead} />;
+    // Feature Detail Page
+    if (currentPage === 'featureDetail') {
+      return (
+        <FeatureDetailPage
+          featureTitle={selectedFeatureTitle}
+          currentTheme={currentTheme}
+          onBack={() => {
+            setIsShutterOpen(false);
+            setCurrentPage('homepage');
+            window.scrollTo(0, 0);
+          }}
+          onOpenShutter={() => {
+            setCurrentPage('homepage');
+            setIsShutterOpen(true);
+          }}
+        />
+      );
+    }
 
-  if (currentPage === 'roleSelection' && selectedDiscussion)
-    return <RoleSelectionPage discussion={selectedDiscussion} currentTheme={currentTheme} onSelectRole={handleSelectRole} onBack={handleBackFromRoleSelection} />;
+    // My Activity Page
+    if (currentPage === 'myActivity') {
+      return (
+        <MyActivityPage
+          currentTheme={currentTheme}
+          onBack={() => {
+            setCurrentPage('homepage');
+            window.scrollTo(0, 0);
+          }}
+          onOpenShutter={() => {
+            setCurrentPage('homepage');
+            setIsShutterOpen(true);
+          }}
+        />
+      );
+    }
 
-  if (currentPage === 'meeting' && selectedDiscussion && selectedRole)
-    return <MeetingPage discussion={selectedDiscussion} currentTheme={currentTheme} userRole={selectedRole} userName={user.name} onLeave={handleLeaveMeeting} />;
+    // My Topics Page
+    if (currentPage === 'myTopics') {
+      return (
+        <MyTopicsPage
+          currentTheme={currentTheme}
+          onBack={() => {
+            setCurrentPage('homepage');
+            window.scrollTo(0, 0);
+          }}
+          onOpenShutter={() => {
+            setCurrentPage('homepage');
+            setIsShutterOpen(true);
+          }}
+        />
+      );
+    }
 
-  if (currentPage === 'privacy')
-    return <PrivacyPolicyPage currentTheme={currentTheme} onBack={() => setCurrentPage('homepage')} />;
+    // Supported Topics Page
+    if (currentPage === 'supportedTopics') {
+      return (
+        <SupportedTopicsPage
+          currentTheme={currentTheme}
+          onBack={() => {
+            setCurrentPage('homepage');
+            window.scrollTo(0, 0);
+          }}
+          onOpenShutter={() => {
+            setCurrentPage('homepage');
+            setIsShutterOpen(true);
+          }}
+        />
+      );
+    }
 
-  if (currentPage === 'notFound')
-    return <NotFoundPage currentTheme={currentTheme} onBack={() => setCurrentPage('homepage')} currentPath={window.location.pathname} />;
+    // Saved Topics Page
+    if (currentPage === 'savedTopics') {
+      return (
+        <SavedTopicsPage
+          currentTheme={currentTheme}
+          onBack={() => {
+            setCurrentPage('homepage');
+            window.scrollTo(0, 0);
+          }}
+          onOpenShutter={() => {
+            setCurrentPage('homepage');
+            setIsShutterOpen(true);
+          }}
+        />
+      );
+    }
 
-  if (currentPage === 'leaving' && selectedDiscussion)
-    return <LeavingMeetingPage discussionTitle={selectedDiscussion.title} currentTheme={currentTheme} onReturnHome={handleReturnHome} />;
+    // Homepage
+    return (
+      <AuroraBackground className="min-h-screen w-full block bg-transparent p-0 overflow-x-hidden">
+        <div 
+          className={`min-h-screen transition-all duration-700 ${theme.textColor}`}
+          style={{ background: 'transparent', fontFamily: 'var(--font-body)' }}
+        >
+          {/* Header */}
+          <Header
+            user={user}
+            currentTheme={currentTheme}
+            onThemeChange={setCurrentTheme}
+            onLogin={() => setShowLoginModal(true)}
+            onLogout={handleLogout}
+            onProfile={handleGoToProfile}
+            onMyActivity={() => {
+              setCurrentPage('myActivity');
+              window.scrollTo(0, 0);
+            }}
+            onMyTopics={() => {
+              setCurrentPage('myTopics');
+              window.scrollTo(0, 0);
+            }}
+            onSupportedTopics={() => {
+              setCurrentPage('supportedTopics');
+              window.scrollTo(0, 0);
+            }}
+            onSavedTopics={() => {
+              setCurrentPage('savedTopics');
+              window.scrollTo(0, 0);
+            }}
+          />
 
-  // ── Homepage ───────────────────────────────────────────────
+          {/* Hero Section */}
+          <Hero
+            currentTheme={currentTheme}
+            textColor={theme.textColor}
+            onReadMore={(title) => {
+              setIsShutterOpen(false);
+              setSelectedFeatureTitle(title);
+              setCurrentPage('featureDetail');
+              window.scrollTo(0, 0);
+            }}
+          />
+
+          {/* What is Duneli Section */}
+          <WhatIsDuneli currentTheme={currentTheme} />
+
+          {/* How Duneli Works 3D Section */}
+          <HowDuneliWorks3D currentTheme={currentTheme} />
+
+          {/* Dunora Publication Showcase Section */}
+          <DunoraSection currentTheme={currentTheme} />
+
+          {/* Footer */}
+          <Footer
+            onOpenShutter={() => setIsShutterOpen(true)}
+            onPrivacyPolicyClick={() => setCurrentPage('privacyPolicy')}
+            onAboutUsClick={() => setShowAboutUsModal(true)}
+            onTermsClick={() => setShowTermsModal(true)}
+            onGuidelinesClick={() => setShowGuidelinesModal(true)}
+            onHelpClick={() => setShowHelpModal(true)}
+            onFaqClick={() => setShowFaqModal(true)}
+          />
+
+          {/* Notification Panel */}
+          <NotificationPanel
+            notifications={notifications}
+            currentTheme={currentTheme}
+            onMarkAsRead={handleMarkAsRead}
+            onMarkAllAsRead={handleMarkAllAsRead}
+          />
+
+          {/* Login Modal */}
+          <LoginModal
+            isOpen={showLoginModal}
+            currentTheme={currentTheme}
+            onClose={() => setShowLoginModal(false)}
+            onLogin={handleLogin}
+          />
+
+          {/* About Us Modal */}
+          <AboutUsModal
+            isOpen={showAboutUsModal}
+            onClose={() => setShowAboutUsModal(false)}
+          />
+
+          {/* Terms of Service Modal */}
+          <TermsModal
+            isOpen={showTermsModal}
+            onClose={() => setShowTermsModal(false)}
+          />
+
+          {/* Community Guidelines Modal */}
+          <CommunityGuidelinesModal
+            isOpen={showGuidelinesModal}
+            onClose={() => setShowGuidelinesModal(false)}
+          />
+
+          {/* Help Center Modal */}
+          <HelpCenterModal
+            isOpen={showHelpModal}
+            onClose={() => setShowHelpModal(false)}
+          />
+
+          {/* FAQs Modal */}
+          <FaqModal
+            isOpen={showFaqModal}
+            onClose={() => setShowFaqModal(false)}
+          />
+        </div>
+      </AuroraBackground>
+    );
+  };
+
   return (
-    <div className={`min-h-screen transition-all duration-700 ${theme.textColor}`}
-      style={{ background: theme.background, fontFamily: 'var(--font-body)' }}>
-
-      <Header
-        user={user}
-        currentTheme={currentTheme}
-        onThemeChange={handleThemeChange}
-        onLogin={() => setShowLoginModal(true)}
-        onLogout={handleLogout}
-        onNavigate={handleNavigate}
-      />
-
-      <Hero currentTheme={currentTheme} textColor={theme.textColor} />
-
-      {loading ? (
-        <div className={`text-center py-24 ${theme.textColor} opacity-50`}>Loading discussions...</div>
-      ) : (
-        <>
-          <HappeningNow discussions={discussions} currentTheme={currentTheme} isLoggedIn={user.isLoggedIn} onJoinDiscussion={handleJoinDiscussion} onLoginPrompt={handleLoginPrompt} />
-          <div className="max-w-7xl mx-auto px-4 py-8 sm:px-8 sm:py-12">
-            <SearchBar currentTheme={currentTheme} allDiscussions={discussions} selectedLanguage={selectedLanguage} isLoggedIn={user.isLoggedIn} onScheduleDiscussion={handleScheduleDiscussion} onLoginPrompt={handleLoginPrompt} />
-            <div className="mt-8">
-              <DiscoveryControls currentTheme={currentTheme} mode={discoveryMode} onModeChange={setDiscoveryMode} selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} selectedLanguage={selectedLanguage} onLanguageChange={setSelectedLanguage} sortBy={sortBy} onSortChange={setSortBy} />
-            </div>
-          </div>
-          <UpcomingDiscussions discussions={filteredDiscussions} currentTheme={currentTheme} isLoggedIn={user.isLoggedIn} onShowInterest={handleShowInterest} onLoginPrompt={handleLoginPrompt} />
-        </>
+    <>
+      {showSplash && (
+        <SplashScreen
+          onFinish={() => {
+            setShowSplash(false);
+            window.scrollTo(0, 0);
+          }}
+        />
       )}
 
-      <PhilosophyBanner currentTheme={currentTheme} />
+      {/* Viewport Draggable Shutter Drawer (Homepage Only) */}
+      {currentPage === 'homepage' && (
+        <ShutterDrawer
+          discussions={discussions}
+          currentTheme={currentTheme}
+          isLoggedIn={user.isLoggedIn}
+          onJoinDiscussion={handleJoinDiscussion}
+          onShowInterest={handleShowInterest}
+          onScheduleDiscussion={handleScheduleDiscussion}
+          onLoginPrompt={() => setShowLoginModal(true)}
+          externalIsOpen={isShutterOpen}
+        />
+      )}
 
-      <footer className="text-center py-8 px-6" style={{ opacity: 0.45, fontSize: 13 }}>
-        <div className={`${theme.textColor} flex items-center justify-center gap-4 flex-wrap`}>
-          <span>© 2026 Duneli · IUXOA</span>
-          <span>·</span>
-          <button onClick={() => setCurrentPage('privacy')}
-            className="underline underline-offset-2 hover:opacity-80 transition-opacity">
-            Privacy Policy
-          </button>
-          <span>·</span>
-          <a href="mailto:hello@duneli.com"
-            className="underline underline-offset-2 hover:opacity-80 transition-opacity">
-            Contact
-          </a>
-        </div>
-      </footer>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentPage}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.25, ease: 'easeInOut' }}
+          className="w-full min-h-screen"
+        >
+          {renderCurrentPage()}
+        </motion.div>
+      </AnimatePresence>
 
-      <NotificationPanel notifications={notifications} currentTheme={currentTheme} onMarkAsRead={handleMarkAsRead} onMarkAllAsRead={handleMarkAllAsRead} />
-
-      <LoginModal isOpen={showLoginModal} currentTheme={currentTheme} onClose={() => setShowLoginModal(false)} onLogin={handleLogin} />
-    </div>
+      {/* Viewport Floating Notification Panel (Homepage Only) */}
+      {currentPage === 'homepage' && (
+        <NotificationPanel
+          notifications={notifications}
+          currentTheme={currentTheme}
+          onMarkAsRead={handleMarkAsRead}
+          onMarkAllAsRead={handleMarkAllAsRead}
+        />
+      )}
+    </>
   );
 }

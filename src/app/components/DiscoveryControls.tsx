@@ -42,6 +42,7 @@ export function DiscoveryControls({
   const languageRef = useRef<HTMLDivElement>(null);
   const sortRef = useRef<HTMLDivElement>(null);
   const theme = themes[currentTheme];
+  const isDuneli = currentTheme === 'duneli';
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -61,28 +62,46 @@ export function DiscoveryControls({
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+    <div className="flex flex-wrap items-center gap-4">
       {/* Mode Toggle */}
-      <div className={`${theme.cardStyle} rounded-full p-1 flex items-center gap-1 flex-shrink-0`}>
+      <div className={`rounded-full p-1 flex items-center gap-1 ${
+        isDuneli
+          ? 'bg-white border border-blue-100 shadow-sm'
+          : `${theme.cardStyle}`
+      }`}>
         <button
           onClick={() => onModeChange('interest')}
-          className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-full transition-all text-sm ${
-            mode === 'interest' ? theme.buttonClass : 'hover:bg-white/10'
+          className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
+            mode === 'interest'
+              ? isDuneli
+                ? 'text-white shadow-md'
+                : theme.buttonClass
+              : isDuneli
+                ? 'text-[#1A1A2E]/60 hover:bg-blue-50'
+                : 'hover:bg-white/10'
           }`}
+          style={mode === 'interest' && isDuneli ? { background: 'linear-gradient(135deg, #3B5BF6, #7C3AED)' } : {}}
         >
-          <div className="flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-3.5 h-3.5" />
             <span>Interest</span>
           </div>
         </button>
         <button
           onClick={() => onModeChange('categories')}
-          className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-full transition-all text-sm ${
-            mode === 'categories' ? theme.buttonClass : 'hover:bg-white/10'
+          className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
+            mode === 'categories'
+              ? isDuneli
+                ? 'text-white shadow-md'
+                : theme.buttonClass
+              : isDuneli
+                ? 'text-[#1A1A2E]/60 hover:bg-blue-50'
+                : 'hover:bg-white/10'
           }`}
+          style={mode === 'categories' && isDuneli ? { background: 'linear-gradient(135deg, #3B5BF6, #7C3AED)' } : {}}
         >
-          <div className="flex items-center gap-1.5">
-            <Grid3x3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <div className="flex items-center gap-2">
+            <Grid3x3 className="w-3.5 h-3.5" />
             <span>Categories</span>
           </div>
         </button>
@@ -90,22 +109,22 @@ export function DiscoveryControls({
 
       {/* Category Filter (visible when Categories mode is active) */}
       {mode === 'categories' && (
-        <div className="relative" ref={categoryRef}>
+        <div className="relative z-30" ref={categoryRef}>
           <button
             onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-            className={`${theme.cardStyle} rounded-full px-4 py-2 sm:px-6 flex items-center gap-2 hover:scale-105 transition-transform text-sm sm:text-base`}
+            className="bg-white/90 backdrop-blur-md border border-blue-100/80 shadow-sm rounded-full px-6 py-2.5 text-sm font-bold text-[#1A1A2E] flex items-center gap-2 hover:scale-105 transition-all cursor-pointer"
           >
             <span>{selectedCategory}</span>
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-4 h-4 text-[#3B5BF6]" />
           </button>
 
           <AnimatePresence>
             {showCategoryDropdown && (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className={`absolute top-full mt-2 ${theme.cardStyle} rounded-xl overflow-hidden z-40 min-w-[160px]`}
+                exit={{ opacity: 0, y: -8 }}
+                className="absolute top-full left-0 mt-2 bg-white/95 backdrop-blur-2xl border border-blue-200/80 shadow-2xl rounded-2xl overflow-hidden z-40 min-w-[190px] p-1.5"
               >
                 {categories.map((category) => (
                   <button
@@ -114,8 +133,10 @@ export function DiscoveryControls({
                       onCategoryChange(category);
                       setShowCategoryDropdown(false);
                     }}
-                    className={`w-full px-4 py-2 text-left hover:bg-white/10 transition-colors ${
-                      selectedCategory === category ? theme.buttonClass : ''
+                    className={`w-full px-4 py-2.5 text-left rounded-xl text-xs transition-colors cursor-pointer ${
+                      selectedCategory === category
+                        ? 'bg-gradient-to-r from-[#3B5BF6] to-[#7C3AED] text-white font-extrabold shadow-md'
+                        : 'text-[#1A1A2E] font-bold hover:bg-blue-50 hover:text-[#3B5BF6]'
                     }`}
                   >
                     {category}
@@ -128,23 +149,23 @@ export function DiscoveryControls({
       )}
 
       {/* Language Filter */}
-      <div className="relative" ref={languageRef}>
+      <div className="relative z-30" ref={languageRef}>
         <button
           onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-          className={`${theme.cardStyle} rounded-full px-4 py-2 sm:px-6 flex items-center gap-2 hover:scale-105 transition-transform text-sm sm:text-base`}
+          className="bg-white/90 backdrop-blur-md border border-blue-100/80 shadow-sm rounded-full px-6 py-2.5 text-sm font-bold text-[#1A1A2E] flex items-center gap-2 hover:scale-105 transition-all cursor-pointer"
         >
-          <Globe className="w-4 h-4" />
+          <Globe className="w-4 h-4 text-[#7C3AED]" />
           <span>{selectedLanguage}</span>
-          <ChevronDown className="w-4 h-4" />
+          <ChevronDown className="w-4 h-4 text-[#7C3AED]" />
         </button>
 
         <AnimatePresence>
           {showLanguageDropdown && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className={`absolute top-full mt-2 ${theme.cardStyle} rounded-xl overflow-hidden z-40 min-w-[160px]`}
+              exit={{ opacity: 0, y: -8 }}
+              className="absolute top-full left-0 mt-2 bg-white/95 backdrop-blur-2xl border border-blue-200/80 shadow-2xl rounded-2xl overflow-hidden z-40 min-w-[190px] p-1.5"
             >
               {languages.map((language) => (
                 <button
@@ -153,8 +174,10 @@ export function DiscoveryControls({
                     onLanguageChange(language);
                     setShowLanguageDropdown(false);
                   }}
-                  className={`w-full px-4 py-2 text-left hover:bg-white/10 transition-colors ${
-                    selectedLanguage === language ? theme.buttonClass : ''
+                  className={`w-full px-4 py-2.5 text-left rounded-xl text-xs transition-colors cursor-pointer ${
+                    selectedLanguage === language
+                      ? 'bg-gradient-to-r from-[#3B5BF6] to-[#7C3AED] text-white font-extrabold shadow-md'
+                      : 'text-[#1A1A2E] font-bold hover:bg-blue-50 hover:text-[#3B5BF6]'
                   }`}
                 >
                   {language}
@@ -166,23 +189,23 @@ export function DiscoveryControls({
       </div>
 
       {/* Sort Dropdown */}
-      <div className="relative ml-auto" ref={sortRef}>
+      <div className="relative ml-auto z-30" ref={sortRef}>
         <button
           onClick={() => setShowSortDropdown(!showSortDropdown)}
-          className={`${theme.cardStyle} rounded-full px-4 py-2 sm:px-6 flex items-center gap-1.5 sm:gap-2 hover:scale-105 transition-transform text-sm sm:text-base`}
+          className="bg-white/90 backdrop-blur-md border border-blue-100/80 shadow-sm rounded-full px-6 py-2.5 text-sm font-bold text-[#1A1A2E] flex items-center gap-2 hover:scale-105 transition-all cursor-pointer"
         >
-          <span className="hidden sm:inline text-sm opacity-70">Sort:</span>
+          <span className="text-xs text-[#1A1A2E]/60 font-semibold">Sort:</span>
           <span>{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
-          <ChevronDown className="w-4 h-4" />
+          <ChevronDown className="w-4 h-4 text-[#F97316]" />
         </button>
 
         <AnimatePresence>
           {showSortDropdown && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className={`absolute right-0 top-full mt-2 ${theme.cardStyle} rounded-xl overflow-hidden z-40 min-w-[180px]`}
+              exit={{ opacity: 0, y: -8 }}
+              className="absolute top-full right-0 mt-2 bg-white/95 backdrop-blur-2xl border border-blue-200/80 shadow-2xl rounded-2xl overflow-hidden z-50 min-w-[190px] p-1.5"
             >
               {sortOptions.map((option) => (
                 <button
@@ -191,8 +214,10 @@ export function DiscoveryControls({
                     onSortChange(option.value);
                     setShowSortDropdown(false);
                   }}
-                  className={`w-full px-4 py-2 text-left hover:bg-white/10 transition-colors ${
-                    sortBy === option.value ? theme.buttonClass : ''
+                  className={`w-full px-4 py-2.5 text-left rounded-xl text-xs transition-colors cursor-pointer ${
+                    sortBy === option.value
+                      ? 'bg-gradient-to-r from-[#3B5BF6] to-[#7C3AED] text-white font-extrabold shadow-md'
+                      : 'text-[#1A1A2E] font-bold hover:bg-blue-50 hover:text-[#3B5BF6]'
                   }`}
                 >
                   {option.label}

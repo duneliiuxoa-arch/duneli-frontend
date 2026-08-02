@@ -1,5 +1,6 @@
 // Agora Service - STRICT IMPLEMENTATION (NO CERTIFICATE IN FRONTEND)
-// Token fetched from Duneli backend API (replaces Firebase Cloud Functions)
+import { httpsCallable, HttpsCallableResult } from 'firebase/functions';
+import { functions } from '../lib/firebase';
 import {
   createAgoraClient,
   createMicrophoneTrack,
@@ -16,47 +17,42 @@ interface AgoraTokenResponse {
   channelName: string;
 }
 
-// Get Agora token from Duneli backend API (SECURE - SERVER SIDE ONLY)
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-// Helper: Supabase UUID → consistent numeric Agora UID (exported for MeetingPage)
-export const toAgoraUid = (userId: string): number => {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    hash = ((hash << 5) - hash) + userId.charCodeAt(i);
-    hash |= 0; // Convert to 32-bit int
-  }
-  return Math.abs(hash) % 100000; // Keep it small and positive
-};
-
+// Get Agora token from Cloud Function (SECURE - SERVER SIDE ONLY)
 export const getAgoraToken = async (
   channelName: string,
   userId: string,
   role: 'listener' | 'speaker' | 'debater'
-): Promise<string | null> => {
+): Promise<string> => {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/agora/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channelName, userId: toAgoraUid(userId), role }),
+    const generateToken = httpsCallable<
+      { channelName: string; userId: string; role: string },
+      { token: string }
+    >(functions, 'generateAgoraToken');
+
+    const result: HttpsCallableResult<{ token: string }> = await generateToken({
+      channelName,
+      userId,
+      role,
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const msg = (err as any).message || res.statusText;
-      if (res.status === 401) throw new Error('You must be signed in to join audio');
-      if (res.status === 403) throw new Error('You do not have permission to join this discussion');
-      if (res.status === 404) throw new Error('Discussion not found or not active');
-      if (res.status === 500) throw new Error('Audio server error — AGORA_APP_CERTIFICATE not set on server.');
-      throw new Error(msg || 'Failed to generate audio token. Please try again.');
+    if (!result.data || !result.data.token) {
+      throw new Error('Invalid token response from server');
     }
 
-    const data = await res.json();
-    // null token = App ID only mode (no certificate) — allowed for testing
-    return data.token ?? null;
+    return result.data.token;
   } catch (error: any) {
     console.error('Error getting Agora token:', error);
-    throw error;
+    
+    // Handle specific Firebase Function errors
+    if (error.code === 'unauthenticated') {
+      throw new Error('You must be signed in to join audio');
+    } else if (error.code === 'permission-denied') {
+      throw new Error('You do not have permission to join this discussion');
+    } else if (error.code === 'failed-precondition') {
+      throw new Error('Discussion not found or not active');
+    } else {
+      throw new Error('Failed to generate audio token. Please try again.');
+    }
   }
 };
 
@@ -101,9 +97,8 @@ export const joinAgoraChannel = async (
       });
     }
 
-    // Join channel with same numeric UID used in token generation
-    const numericUid = toAgoraUid(userId);
-    await agoraClient.join(AGORA_APP_ID, channelName, token || null, numericUid);
+    // Join channel with server-generated token
+    await agoraClient.join(AGORA_APP_ID, channelName, token, userId);
 
     // Create and publish audio track for speakers and debaters ONLY
     if (role === 'speaker' || role === 'debater') {

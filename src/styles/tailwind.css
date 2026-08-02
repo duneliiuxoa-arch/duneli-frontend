@@ -3,9 +3,91 @@
 
 @import 'tw-animate-css';
 
-/* Extra small breakpoint — chhote phones (iPhone SE etc.) ke liye, 3-col grids ko 2-col se 3-col mein transition karne ke liye */
-@theme {
-  --breakpoint-xs: 420px;
+/* Site-wide selection prevention */
+*, *::before, *::after {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+input, textarea {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+:root {
+  --white: #ffffff;
+  --black: #000000;
+  --transparent: transparent;
+  --blue-500: #3b82f6;
+  --indigo-300: #a5b4fc;
+  --blue-300: #93c5fd;
+  --violet-200: #ddd6fe;
+  --blue-400: #60a5fa;
+
+  --color-1: 0 100% 63%;
+  --color-2: 270 100% 63%;
+  --color-3: 210 100% 63%;
+  --color-4: 195 100% 63%;
+  --color-5: 90 100% 63%;
+}
+
+@keyframes aurora {
+  0% {
+    background-position: 0% 50%;
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    background-position: 100% 50%;
+    transform: rotate(3deg) scale(1.08);
+  }
+  100% {
+    background-position: 0% 50%;
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+@keyframes aurora-reverse {
+  0% {
+    background-position: 100% 50%;
+    transform: rotate(0deg) scale(1.05);
+  }
+  50% {
+    background-position: 0% 50%;
+    transform: rotate(-3deg) scale(1);
+  }
+  100% {
+    background-position: 100% 50%;
+    transform: rotate(0deg) scale(1.05);
+  }
+}
+
+.animate-aurora {
+  animation: aurora 18s ease-in-out infinite;
+}
+
+.animate-aurora-reverse {
+  animation: aurora-reverse 24s ease-in-out infinite;
+}
+
+@keyframes rainbow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-rainbow {
+  animation: rainbow 3s infinite linear;
 }
 
 /* Additional global styles for DUNELI */
@@ -26,10 +108,5 @@
   
   .backdrop-blur-lg {
     backdrop-filter: blur(16px);
-  }
-
-  /* iPhone home-indicator/notch ke neeche content na dabe — mobile bottom sheets/bars ke liye */
-  .safe-area-bottom {
-    padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
   }
 }

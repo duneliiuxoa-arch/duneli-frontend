@@ -2,7 +2,7 @@
 
 :root {
   --font-size: 16px;
-  --font-heading: 'Satoshi', sans-serif;
+  --font-heading: 'Plus Jakarta Sans', 'Satoshi', sans-serif;
   --font-body: 'Inter', sans-serif;
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
@@ -184,5 +184,82 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+/* ============================================================
+   FUTURISTIC THEME — deep black / charcoal / midnight blue
+   with neon cyan-blue glow accents. Scoped under .theme-futuristic
+   so the rest of the app is unaffected.
+   ============================================================ */
+.theme-futuristic {
+  --nova-bg: #05060a;
+  --nova-charcoal: #0b0e14;
+  --nova-midnight: #0a1128;
+  --nova-cyan: #4bf5ff;
+  --nova-blue: #4f7dff;
+  --nova-violet: #8b6bff;
+  --nova-text: #eef2ff;
+  --nova-text-dim: rgba(238, 242, 255, 0.62);
+  --nova-border: rgba(120, 190, 255, 0.18);
+  --font-heading: 'Space Grotesk', 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  color: var(--nova-text);
+}
+
+.theme-futuristic .nova-glass {
+  background: linear-gradient(180deg, rgba(20, 26, 41, 0.55), rgba(10, 13, 22, 0.55));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--nova-border);
+  box-shadow:
+    0 0 0 1px rgba(75, 245, 255, 0.04) inset,
+    0 20px 60px rgba(0, 0, 0, 0.45),
+    0 0 40px rgba(75, 160, 255, 0.06);
+}
+
+.theme-futuristic .nova-glow-border {
+  position: relative;
+}
+.theme-futuristic .nova-glow-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(75, 245, 255, 0.6), rgba(139, 107, 255, 0.15), rgba(79, 125, 255, 0.5));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.theme-futuristic .nova-text-gradient {
+  background-image: linear-gradient(100deg, #ffffff 10%, var(--nova-cyan) 45%, var(--nova-blue) 70%, var(--nova-violet) 95%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: nova-gradient-pan 8s ease-in-out infinite;
+}
+
+@keyframes nova-gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.theme-futuristic .nova-glow-pulse {
+  animation: nova-pulse 3.2s ease-in-out infinite;
+}
+@keyframes nova-pulse {
+  0%, 100% { opacity: 0.55; filter: blur(60px); }
+  50% { opacity: 0.9; filter: blur(80px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-futuristic .nova-text-gradient,
+  .theme-futuristic .nova-glow-pulse {
+    animation: none;
   }
 }

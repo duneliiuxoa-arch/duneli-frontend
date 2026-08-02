@@ -1,8 +1,30 @@
-// Authentication Service — Supabase
-import { supabase } from '../lib/supabase';
-import type { User, Session, AuthError } from '@supabase/supabase-js';
+// Authentication Service - STRICT IMPLEMENTATION
+import {
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signInWithPhoneNumber,
+  signInAnonymously,
+  signOut,
+  onAuthStateChanged,
+  User,
+  ConfirmationResult,
+  RecaptchaVerifier,
+  AuthError,
+  browserLocalPersistence,
+  setPersistence,
+} from 'firebase/auth';
+import {
+  doc,
+  setDoc,
+  getDoc,
+  serverTimestamp,
+  updateDoc,
+} from 'firebase/firestore';
+import { logEvent } from 'firebase/analytics';
+import { auth, db, googleProvider, setupRecaptcha, analytics } from '../lib/firebase';
 
-// ─── Generate anonymous display ID ───────────────────────────────────────────
+// Generate anonymous ID
 const generateAnonymousId = (): string => {
   const prefixes = ['Δ', 'Σ', 'Ω', 'Λ', 'Φ', 'Ψ', 'Ξ'];
   const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
@@ -10,159 +32,324 @@ const generateAnonymousId = (): string => {
   return `${prefix}-${number}`;
 };
 
-// ─── Create or update public.users row after auth ────────────────────────────
-const upsertUserProfile = async (user: User): Promise<void> => {
-  // Never upsert anonymous/guest users into the users table
-  if (user.is_anonymous === true) return;
+// Create or update user profile
+const createOrUpdateUserProfile = async (
+  user: User,
+  provider: 'google' | 'phone' | 'guest'
+): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', user.uid);
+    const userDoc = await getDoc(userRef);
 
-  const { error } = await supabase.from('users').upsert(
-    {
-      id: user.id,
-      name:
-        user.user_metadata?.full_name ||
-        user.user_metadata?.name ||
-        user.email?.split('@')[0] ||
-        'User',
-      email: user.email!,
-      avatarUrl: user.user_metadata?.avatar_url ?? null,
-      updatedAt: new Date().toISOString(),
-    },
-    { onConflict: 'id', ignoreDuplicates: false }
-  );
-
-  if (error) {
-    console.error('Error upserting user profile:', error.message);
-  }
-};
-
-// ─── Sign in with Google (only supported login method) ───────────────────────
-export const signInWithGoogle = async (): Promise<void> => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin,
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'consent',
-      },
-    },
-  });
-
-  if (error) {
-    console.error('Google sign-in error:', error.message);
-    throw error;
-  }
-};
-
-// ─── Check for OAuth redirect result (call on app init) ──────────────────────
-export const checkRedirectResult = async (): Promise<User | null> => {
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error) {
-    console.error('Error getting session:', error.message);
-    return null;
-  }
-
-  const sessionUser = data.session?.user;
-
-  // Reject anonymous/guest sessions — only real Google users pass through
-  if (!sessionUser || sessionUser.is_anonymous === true) return null;
-
-  await upsertUserProfile(sessionUser);
-  return sessionUser;
-};
-
-// ─── Sign out ─────────────────────────────────────────────────────────────────
-export const logout = async (): Promise<void> => {
-  const { error } = await supabase.auth.signOut();
-
-  if (error) {
-    console.error('Sign-out error:', error.message);
-    throw error;
-  }
-
-  localStorage.removeItem('duneli_user');
-  sessionStorage.clear();
-};
-
-// ─── Auth state listener ──────────────────────────────────────────────────────
-// Only fires callback for real (non-anonymous) users.
-// Anonymous sessions are silently ignored so the app stays on the EntryScreen.
-export const onAuthChange = (
-  callback: (user: User | null, session: Session | null) => void
-): (() => void) => {
-  const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-    const user = session?.user ?? null;
-
-    // Block anonymous users — treat them as "not logged in"
-    if (user?.is_anonymous === true) {
-      callback(null, null);
-      return;
-    }
-
-    callback(user, session ?? null);
-  });
-
-  return () => listener.subscription.unsubscribe();
-};
-
-// ─── Get anonymous display ID from public.users ───────────────────────────────
-export const getUserAnonymousId = async (userId: string): Promise<string | null> => {
-  const { data, error } = await supabase
-    .from('users')
-    .select('anonymousId')
-    .eq('id', userId)
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      const { data: session } = await supabase.auth.getSession();
-      const user = session?.session?.user;
-      if (!user || user.is_anonymous === true) return null;
-
-      const newAnonId = generateAnonymousId();
-      await supabase.from('users').upsert({
-        id: userId,
-        name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-        email: user.email!,
-        avatarUrl: user.user_metadata?.avatar_url ?? null,
-        anonymousId: newAnonId,
-        updatedAt: new Date().toISOString(),
+    if (!userDoc.exists()) {
+      // Create new user with anonymous ID
+      await setDoc(userRef, {
+        anonymousId: generateAnonymousId(),
+        provider,
+        createdAt: serverTimestamp(),
+        lastActiveAt: serverTimestamp(),
       });
-      return newAnonId;
+    } else {
+      // Update last active
+      await updateDoc(userRef, {
+        lastActiveAt: serverTimestamp(),
+      });
     }
-    console.error('Error fetching anonymousId:', error.message);
-    return null;
+  } catch (error) {
+    console.error('Error creating/updating user profile:', error);
+    throw error;
   }
-
-  return (data as any)?.anonymousId ?? null;
 };
 
-// ─── Get user profile from public.users ──────────────────────────────────────
+// Set auth persistence (survives refresh)
+const initAuthPersistence = async (): Promise<void> => {
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (error) {
+    console.error('Error setting auth persistence:', error);
+  }
+};
+
+// Initialize persistence on module load
+initAuthPersistence();
+
+// Sign in with Google - WITH POPUP BLOCKED FALLBACK
+export const signInWithGoogle = async (): Promise<User> => {
+  try {
+    // Ensure persistence is set
+    await setPersistence(auth, browserLocalPersistence);
+
+    // Try popup first
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      // Create/update profile
+      await createOrUpdateUserProfile(user, 'google');
+
+      // Log analytics
+      if (analytics) {
+        logEvent(analytics, 'google_login_success', {
+          method: 'google',
+          uid: user.uid,
+        });
+      }
+
+      return user;
+    } catch (popupError) {
+      const error = popupError as AuthError;
+      
+      // If popup blocked, try redirect
+      if (
+        error.code === 'auth/popup-blocked' ||
+        error.code === 'auth/popup-closed-by-user' ||
+        error.code === 'auth/cancelled-popup-request'
+      ) {
+        console.warn('Popup blocked, falling back to redirect');
+        await signInWithRedirect(auth, googleProvider);
+        
+        // signInWithRedirect doesn't return immediately
+        // The user will be redirected and come back
+        // We need to handle this in checkRedirectResult
+        throw new Error('REDIRECT_IN_PROGRESS');
+      }
+
+      // Re-throw other errors
+      throw popupError;
+    }
+  } catch (error) {
+    console.error('Error signing in with Google:', error);
+    throw error;
+  }
+};
+
+// Check for redirect result (call on app init)
+export const checkRedirectResult = async (): Promise<User | null> => {
+  try {
+    const result = await getRedirectResult(auth);
+    
+    if (result && result.user) {
+      const user = result.user;
+
+      // Create/update profile
+      await createOrUpdateUserProfile(user, 'google');
+
+      // Log analytics
+      if (analytics) {
+        logEvent(analytics, 'google_login_success', {
+          method: 'google_redirect',
+          uid: user.uid,
+        });
+      }
+
+      return user;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error checking redirect result:', error);
+    throw error;
+  }
+};
+
+// Sign in with Phone Number - STRICT IMPLEMENTATION
+let recaptchaVerifier: RecaptchaVerifier | null = null;
+
+export const initializeRecaptcha = (containerId: string): RecaptchaVerifier => {
+  try {
+    // Clean up existing verifier
+    if (recaptchaVerifier) {
+      recaptchaVerifier.clear();
+      recaptchaVerifier = null;
+    }
+
+    // Create new verifier
+    recaptchaVerifier = setupRecaptcha(containerId);
+    
+    return recaptchaVerifier;
+  } catch (error) {
+    console.error('Error initializing recaptcha:', error);
+    throw error;
+  }
+};
+
+export const signInWithPhone = async (
+  phoneNumber: string
+): Promise<ConfirmationResult> => {
+  try {
+    if (!recaptchaVerifier) {
+      throw new Error('Recaptcha not initialized. Call initializeRecaptcha first.');
+    }
+
+    // Ensure persistence
+    await setPersistence(auth, browserLocalPersistence);
+
+    // Send OTP
+    const confirmationResult = await signInWithPhoneNumber(
+      auth,
+      phoneNumber,
+      recaptchaVerifier
+    );
+
+    return confirmationResult;
+  } catch (error) {
+    console.error('Error sending OTP:', error);
+    
+    // Reset recaptcha on error
+    if (recaptchaVerifier) {
+      try {
+        recaptchaVerifier.clear();
+      } catch (e) {
+        // Ignore clear errors
+      }
+      recaptchaVerifier = null;
+    }
+    
+    throw error;
+  }
+};
+
+export const verifyPhoneCode = async (
+  confirmationResult: ConfirmationResult,
+  code: string
+): Promise<User> => {
+  try {
+    const result = await confirmationResult.confirm(code);
+    const user = result.user;
+
+    // Create/update profile
+    await createOrUpdateUserProfile(user, 'phone');
+
+    // Log analytics
+    if (analytics) {
+      logEvent(analytics, 'phone_login_success', {
+        method: 'phone',
+        uid: user.uid,
+      });
+    }
+
+    // Clean up recaptcha
+    if (recaptchaVerifier) {
+      try {
+        recaptchaVerifier.clear();
+      } catch (e) {
+        // Ignore
+      }
+      recaptchaVerifier = null;
+    }
+
+    return user;
+  } catch (error) {
+    console.error('Error verifying phone code:', error);
+    throw error;
+  }
+};
+
+// Guest mode - USES FIREBASE ANONYMOUS AUTH
+export const continueAsGuest = async (): Promise<User> => {
+  try {
+    // Ensure persistence
+    await setPersistence(auth, browserLocalPersistence);
+
+    // Sign in anonymously
+    const result = await signInAnonymously(auth);
+    const user = result.user;
+
+    // Create guest profile
+    await createOrUpdateUserProfile(user, 'guest');
+
+    // Log analytics
+    if (analytics) {
+      logEvent(analytics, 'guest_login', {
+        method: 'guest',
+        uid: user.uid,
+      });
+    }
+
+    return user;
+  } catch (error) {
+    console.error('Error signing in as guest:', error);
+    throw error;
+  }
+};
+
+// Sign out - FULLY CLEAR SESSION
+export const logout = async (): Promise<void> => {
+  try {
+    // Clean up recaptcha
+    if (recaptchaVerifier) {
+      try {
+        recaptchaVerifier.clear();
+      } catch (e) {
+        // Ignore
+      }
+      recaptchaVerifier = null;
+    }
+
+    // Sign out from Firebase
+    await signOut(auth);
+
+    // Clear any local storage
+    localStorage.removeItem('duneli_user');
+    sessionStorage.clear();
+  } catch (error) {
+    console.error('Error signing out:', error);
+    throw error;
+  }
+};
+
+// Auth state listener - PERSISTENT ACROSS REFRESH
+export const onAuthChange = (callback: (user: User | null) => void) => {
+  return onAuthStateChanged(auth, callback);
+};
+
+// Get user anonymous ID
+export const getUserAnonymousId = async (userId: string): Promise<string | null> => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+
+    if (userDoc.exists()) {
+      return userDoc.data().anonymousId || null;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error getting user anonymous ID:', error);
+    return null;
+  }
+};
+
+// Get user profile
 export const getUserProfile = async (userId: string) => {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', userId)
-    .single();
+  try {
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
 
-  if (error) {
-    console.error('Error fetching user profile:', error.message);
+    if (userDoc.exists()) {
+      return userDoc.data();
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error getting user profile:', error);
     return null;
   }
-
-  return data;
 };
 
-// ─── Check if user is a guest (anonymous) ────────────────────────────────────
+// Check if user is guest
 export const isGuestUser = (user: User | null): boolean => {
-  if (!user) return false;
-  return user.is_anonymous === true;
+  return user?.isAnonymous || false;
 };
 
-// ─── continueAsGuest — DISABLED ──────────────────────────────────────────────
-// Guest login is not supported. Only Google sign-in is allowed.
-// This function is kept as a stub to avoid import errors elsewhere.
-export const continueAsGuest = async (): Promise<never> => {
-  throw new Error('Guest login is disabled. Please sign in with Google.');
+// Cleanup function for recaptcha
+export const cleanupRecaptcha = (): void => {
+  if (recaptchaVerifier) {
+    try {
+      recaptchaVerifier.clear();
+    } catch (e) {
+      // Ignore
+    }
+    recaptchaVerifier = null;
+  }
 };

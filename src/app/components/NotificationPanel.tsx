@@ -1,7 +1,6 @@
-import { Bell, X, Check } from 'lucide-react';
+import { Bell, X, Check, Mic, Clock, Calendar, Bookmark } from 'lucide-react';
 import { useState } from 'react';
 import { Notification, Theme } from '../types';
-import { themes } from '../config/themes';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface NotificationPanelProps {
@@ -13,24 +12,38 @@ interface NotificationPanelProps {
 
 export function NotificationPanel({
   notifications,
-  currentTheme,
   onMarkAsRead,
   onMarkAllAsRead,
 }: NotificationPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const theme = themes[currentTheme];
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
       case 'discussionStarted':
-        return '🎙️';
+        return (
+          <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#3B5BF6] shrink-0">
+            <Mic className="w-4 h-4" />
+          </div>
+        );
       case 'discussionEnding':
-        return '⏰';
+        return (
+          <div className="w-9 h-9 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center text-[#F97316] shrink-0">
+            <Clock className="w-4 h-4" />
+          </div>
+        );
       case 'discussionScheduled':
-        return '📅';
+        return (
+          <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-[#7C3AED] shrink-0">
+            <Calendar className="w-4 h-4" />
+          </div>
+        );
       case 'savedDiscussion':
-        return '🔖';
+        return (
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[#10b981] shrink-0">
+            <Bookmark className="w-4 h-4" />
+          </div>
+        );
     }
   };
 
@@ -48,26 +61,27 @@ export function NotificationPanel({
 
   return (
     <>
-      {/* Notification Bell */}
+      {/* Notification Bell Floating Button */}
       <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.92 }}
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-4 sm:bottom-8 sm:right-8 ${theme.buttonClass} w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-lg z-40`}
+        className="fixed bottom-8 right-8 w-14 h-14 rounded-full bg-white border-2 border-slate-200/90 shadow-2xl flex items-center justify-center text-[#3B5BF6] z-[9999] cursor-pointer hover:border-[#3B5BF6] transition-all"
+        style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}
       >
-        <Bell className="w-6 h-6" />
+        <Bell className="w-6 h-6 text-[#3B5BF6]" />
         {unreadCount > 0 && (
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            className="absolute -top-1 -right-1 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+            className="absolute -top-1 -right-1 bg-[#3B5BF6] text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shadow-md"
           >
             {unreadCount}
           </motion.div>
         )}
       </motion.button>
 
-      {/* Notification Panel */}
+      {/* Notification Panel Modal */}
       <AnimatePresence>
         {isOpen && (
           <>
@@ -77,72 +91,91 @@ export function NotificationPanel({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsOpen(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-40"
             />
 
-            {/* Panel */}
+            {/* Solid High-Contrast Panel */}
             <motion.div
-              initial={{ opacity: 0, y: 100 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              className={`fixed bottom-0 right-0 w-full sm:w-96 h-[80vh] sm:h-[600px] ${theme.cardStyle} rounded-t-3xl sm:rounded-3xl sm:bottom-8 sm:right-8 z-50 flex flex-col`}
+              initial={{ opacity: 0, y: 40, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.96 }}
+              className="fixed bottom-0 right-0 w-full sm:w-[420px] h-[75vh] sm:h-[580px] bg-white border-2 border-slate-200/90 shadow-2xl rounded-t-3xl sm:rounded-3xl sm:bottom-8 sm:right-8 z-50 flex flex-col overflow-hidden"
+              style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}
             >
-              {/* Header */}
-              <div className={`flex items-center justify-between p-4 sm:p-6 border-b ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'}`}>
-                <h3 className={`font-semibold flex items-center gap-2 ${theme.textColor}`} style={{ fontFamily: 'var(--font-heading)' }}>
-                  <Bell className="w-5 h-5" />
-                  Notifications
+              {/* Panel Header */}
+              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-white">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#3B5BF6]">
+                    <Bell className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-base font-extrabold text-[#1A1A2E] tracking-tight">
+                    Notifications
+                  </h3>
                   {unreadCount > 0 && (
-                    <span className="px-2 py-0.5 bg-red-500 text-white rounded-full text-xs">
-                      {unreadCount}
+                    <span className="px-2.5 py-0.5 bg-[#3B5BF6] text-white rounded-full text-xs font-extrabold">
+                      {unreadCount} new
                     </span>
                   )}
-                </h3>
+                </div>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-[#1A1A2E] transition-colors cursor-pointer"
                 >
-                  <X className={`w-6 h-6 sm:w-5 sm:h-5 ${theme.textColor}`} />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
               {/* Notifications List */}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
                 {notifications.length === 0 ? (
-                  <div className={`flex flex-col items-center justify-center h-full opacity-50 ${theme.textColor}`}>
-                    <Bell className="w-12 h-12 mb-4" />
-                    <p>No notifications yet</p>
+                  <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center mb-3">
+                      <Bell className="w-7 h-7 text-slate-300" />
+                    </div>
+                    <p className="text-sm font-bold text-[#1A1A2E]">No notifications yet</p>
+                    <p className="text-xs text-slate-400 mt-1">We'll alert you when sessions start or schedule updates occur.</p>
                   </div>
                 ) : (
                   <>
                     {notifications.map((notification) => (
                       <motion.div
                         key={notification.id}
-                        initial={{ opacity: 0, x: 20 }}
+                        initial={{ opacity: 0, x: 10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className={`p-3 sm:p-4 border-b ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'} hover:bg-white/5 transition-colors ${
-                          !notification.read ? 'bg-white/5' : ''
+                        className={`p-4 transition-colors flex items-start gap-3.5 ${
+                          !notification.read ? 'bg-blue-50/40' : 'hover:bg-slate-50/80'
                         }`}
                       >
-                        <div className="flex items-start gap-3">
-                          <div className="text-2xl">{getNotificationIcon(notification.type)}</div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-medium mb-1 ${theme.textColor}`}>{notification.message}</p>
-                            <p className={`text-sm opacity-70 line-clamp-1 mb-2 ${theme.textColor}`}>
-                              {notification.discussionTitle}
+                        {getNotificationIcon(notification.type)}
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <p className="text-xs sm:text-sm font-extrabold text-[#1A1A2E] leading-snug">
+                              {notification.message}
                             </p>
-                            <p className={`text-xs opacity-50 ${theme.textColor}`}>{formatTimestamp(notification.timestamp)}</p>
+                            {!notification.read && (
+                              <span className="w-2 h-2 rounded-full bg-[#3B5BF6] shrink-0" />
+                            )}
                           </div>
-                          {!notification.read && (
-                            <button
-                              onClick={() => onMarkAsRead(notification.id)}
-                              className="p-1 hover:bg-white/10 rounded-full transition-colors"
-                              title="Mark as read"
-                            >
-                              <Check className={`w-4 h-4 ${theme.textColor}`} />
-                            </button>
-                          )}
+
+                          <p className="text-xs font-semibold text-slate-600 line-clamp-1 mb-1">
+                            {notification.discussionTitle}
+                          </p>
+
+                          <p className="text-[11px] font-bold text-slate-400">
+                            {formatTimestamp(notification.timestamp)}
+                          </p>
                         </div>
+
+                        {!notification.read && (
+                          <button
+                            onClick={() => onMarkAsRead(notification.id)}
+                            className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-[#3B5BF6] hover:border-[#3B5BF6] transition-all cursor-pointer shrink-0"
+                            title="Mark as read"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </motion.div>
                     ))}
                   </>
@@ -151,10 +184,10 @@ export function NotificationPanel({
 
               {/* Footer */}
               {notifications.length > 0 && unreadCount > 0 && (
-                <div className={`p-3 sm:p-4 border-t ${theme.textColor === 'text-white' ? 'border-white/10' : 'border-gray-200'} pb-safe`}>
+                <div className="p-4 border-t border-slate-100 bg-white">
                   <button
                     onClick={onMarkAllAsRead}
-                    className={`w-full py-2 px-4 rounded-full ${theme.buttonClass} transition-colors`}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#1A1A2E] hover:bg-[#2d2d4e] active:scale-95 text-white text-xs font-extrabold shadow-md transition-all cursor-pointer"
                   >
                     Mark all as read
                   </button>
