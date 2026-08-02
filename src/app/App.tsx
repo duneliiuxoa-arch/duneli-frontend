@@ -27,13 +27,20 @@ import { MyActivityPage } from './components/MyActivityPage';
 import { MyTopicsPage } from './components/MyTopicsPage';
 import { SupportedTopicsPage } from './components/SupportedTopicsPage';
 import { SavedTopicsPage } from './components/SavedTopicsPage';
-import { mockDiscussions, mockNotifications, mockUser } from './data/mockData';
+import { mockNotifications, mockUser } from './data/mockData';
 import { Discussion, User, Notification, Theme, DiscoveryMode, Category, SortOption, Language, Page, Role } from './types';
 import { themes } from './config/themes';
 import { initializeSecurityDeterrents } from '../services/securityDeterrents';
 import { useAuth } from '../hooks/useAuth';
 import { logout } from '../services/authService';
-import { createTopic, subscribeAllTopics, expressInterest } from '../services/discussionService';
+import {
+  subscribeDiscussions,
+  createDiscussion,
+  voteDiscussion,
+  joinMeeting,
+  leaveMeeting,
+  type RealDiscussion,
+} from '../services/api';
 
 export default function App() {
   // Real Supabase Auth Integration
@@ -73,15 +80,28 @@ export default function App() {
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
 
-  // Subscribe to Real Supabase Discussions & Topics
+  // ── Real API: subscribe to discussions ───────────────────
   useEffect(() => {
-    const unsubscribe = subscribeAllTopics((realDiscussions) => {
-      if (realDiscussions && realDiscussions.length > 0) {
-        setDiscussions(realDiscussions);
-      }
+    const unsubscribe = subscribeDiscussions((realItems) => {
+      const mapped: Discussion[] = realItems.map((d: RealDiscussion) => ({
+        id:             d.id,
+        title:          d.title,
+        category:       (d.category as any) || 'Technology',
+        language:       (d.language  as any) || 'English',
+        status:         d.status,
+        interestCount:  d.interestCount,
+        listenerCount:  d.activeAttendees,
+        scheduledTime:  d.scheduledTime,
+        startedTime:    d.startedTime,
+        duration:       60,
+        hostId:         d.hostId,
+        hostName:       d.hostName,
+        hasUserInterest: d.hasUserVoted,
+        hasUserSaved:   false,
+      }));
+      setDiscussions(mapped);
     });
-
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
   
   // Discovery State
@@ -215,54 +235,48 @@ export default function App() {
     setCurrentPage('homepage');
   };
 
-  const handleShowInterest = (discussionId: string) => {
-    expressInterest(discussionId, user.id);
-    setDiscussions(discussions.map(discussion =>
-      discussion.id === discussionId
-        ? {
-            ...discussion,
-            hasUserInterest: !discussion.hasUserInterest,
-            interestCount: discussion.hasUserInterest 
-              ? discussion.interestCount - 1 
-              : discussion.interestCount + 1,
-          }
-        : discussion
+  const handleShowInterest = async (discussionId: string) => {
+    // Optimistic update
+    setDiscussions(prev => prev.map(d =>
+      d.id === discussionId
+        ? { ...d, hasUserInterest: !d.hasUserInterest, interestCount: d.hasUserInterest ? d.interestCount - 1 : d.interestCount + 1 }
+        : d
     ));
+    // Real API vote
+    await voteDiscussion(discussionId);
   };
 
   const handleScheduleDiscussion = async (title: string) => {
-    const topicCategory = selectedCategory === 'All' ? 'Technology' : selectedCategory;
+    // Real API
+    const newId = await createDiscussion(title);
     const scheduledTime = new Date(Date.now() + 24 * 60 * 60000);
-    
-    // Save to Real Supabase API
-    const realTopicId = await createTopic(title, topicCategory, user.id, user.name, scheduledTime);
+    const topicCategory = selectedCategory === 'All' ? 'Technology' : selectedCategory;
 
     const newDiscussion: Discussion = {
-      id: realTopicId,
+      id:             newId || `topic_${Date.now()}`,
       title,
-      category: topicCategory as Category,
-      language: selectedLanguage === 'All' ? 'English' : selectedLanguage,
-      status: 'upcoming',
-      interestCount: 1,
+      category:       topicCategory as any,
+      language:       selectedLanguage === 'All' ? 'English' : selectedLanguage as any,
+      status:         'upcoming',
+      interestCount:  1,
       scheduledTime,
-      duration: 60,
-      hostId: user.id,
-      hostName: user.name,
+      duration:       60,
+      hostId:         user.id,
+      hostName:       user.name,
       hasUserInterest: true,
     };
-    setDiscussions([newDiscussion, ...discussions]);
-    
-    // Add notification
+    setDiscussions(prev => [newDiscussion, ...prev]);
+
     const newNotification: Notification = {
-      id: `notif-${Date.now()}`,
-      type: 'discussionScheduled',
-      message: 'Your discussion has been scheduled',
-      discussionId: newDiscussion.id,
+      id:              `notif-${Date.now()}`,
+      type:            'discussionScheduled',
+      message:         'Your discussion has been scheduled',
+      discussionId:    newDiscussion.id,
       discussionTitle: newDiscussion.title,
-      timestamp: new Date(),
-      read: false,
+      timestamp:       new Date(),
+      read:            false,
     };
-    setNotifications([newNotification, ...notifications]);
+    setNotifications(prev => [newNotification, ...prev]);
   };
 
   const handleJoinDiscussion = (discussionId: string) => {
@@ -270,6 +284,7 @@ export default function App() {
     if (discussion) {
       setSelectedDiscussion(discussion);
       setCurrentPage('roleSelection');
+      joinMeeting(discussionId); // real API — attendee count update
     }
   };
 
@@ -279,6 +294,7 @@ export default function App() {
   };
 
   const handleLeaveMeeting = () => {
+    if (selectedDiscussion) leaveMeeting(selectedDiscussion.id); // real API
     setCurrentPage('leaving');
   };
 

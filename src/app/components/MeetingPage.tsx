@@ -1,8 +1,15 @@
 import { Radio, Users, Clock, Hand, ThumbsUp, ThumbsDown, Mic, MicOff, LogOut, Volume2, Headphones, Send } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Theme, Role, Discussion, Participant, HandRaiseRequest, Idea } from '../types';
 import { themes } from '../config/themes';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  subscribeIdeas,
+  shareIdea,
+  reactToIdea,
+  type RealIdea,
+} from '../../services/api';
+import { supabase } from '../../lib/supabase';
 
 interface MeetingPageProps {
   discussion: Discussion;
@@ -42,48 +49,72 @@ export function MeetingPage({
     { userId: '6', userName: 'Maya Patel', timestamp: new Date(Date.now() - 2 * 60000) },
   ]);
   
-  const [currentIdeas] = useState<Idea[]>([
-    {
-      id: '1',
-      speakerId: '1',
-      speakerName: 'Emma Thompson',
-      content: 'Democratic systems should prioritize education about information verification',
-      timestamp: new Date(Date.now() - 3 * 60000),
-      agreeCount: 42,
-      disagreeCount: 8,
-    },
-    {
-      id: '2',
-      speakerId: '1',
-      speakerName: 'Emma Thompson',
-      content: 'Platform regulation must balance free speech with misinformation control',
-      timestamp: new Date(Date.now() - 1 * 60000),
-      agreeCount: 31,
-      disagreeCount: 15,
-    },
-  ]);
+  // ── Ideas — real API ──────────────────────────────────────
+  const [currentIdeas, setCurrentIdeas] = useState<Idea[]>([]);
+  const [ideaCooldown, setIdeaCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
 
-  const [ideas, setIdeas] = useState<Idea[]>(currentIdeas);
+  // Get current user id from supabase
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user?.id) setCurrentUserId(data.session.user.id);
+    });
+  }, []);
+
+  // Subscribe to real ideas — all participants see same data
+  useEffect(() => {
+    if (!discussion.id) return;
+    const unsub = subscribeIdeas(discussion.id, (realIdeas: RealIdea[]) => {
+      setCurrentIdeas(realIdeas.map(i => ({
+        id:              i.id,
+        speakerId:       i.userId,
+        speakerName:     i.anonymousId || i.userName,
+        content:         i.content,
+        timestamp:       i.createdAt,
+        agreeCount:      i.agreeCount,
+        disagreeCount:   i.disagreeCount,
+        hasUserAgreed:   i.myReaction === 'agree',
+        hasUserDisagreed: i.myReaction === 'disagree',
+      })));
+    });
+    return unsub;
+  }, [discussion.id]);
+
+  // Cooldown ticker
+  const startCooldown = (seconds: number) => {
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    setIdeaCooldown(seconds);
+    cooldownRef.current = setInterval(() => {
+      setIdeaCooldown(prev => {
+        if (prev <= 1) { clearInterval(cooldownRef.current!); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
+
+  const canShareIdea = userRole === 'speaker' || userRole === 'debater';
+
+  const [ideas, setIdeas] = useState<Idea[]>([]);
+
+  // Sync real ideas into local state
+  useEffect(() => { setIdeas(currentIdeas); }, [currentIdeas]);
 
   // Timer for elapsed time
   useEffect(() => {
-    const timer = setInterval(() => {
-      setElapsedTime(prev => prev + 1);
-    }, 1000);
+    const timer = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Timer for speaker time limit (if user is speaker)
+  // Speaker time limit
   useEffect(() => {
     if (isUserSpeaking && userRole === 'speaker') {
-      setSpeakerTimeLeft(180); // 3 minutes
+      setSpeakerTimeLeft(180);
       const timer = setInterval(() => {
         setSpeakerTimeLeft(prev => {
-          if (prev === null || prev <= 1) {
-            setMicMuted(true);
-            setIsUserSpeaking(false);
-            return null;
-          }
+          if (prev === null || prev <= 1) { setMicMuted(true); setIsUserSpeaking(false); return null; }
           return prev - 1;
         });
       }, 1000);
@@ -97,62 +128,58 @@ export function MeetingPage({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleShareIdea = (e?: React.FormEvent) => {
+  // ── Share idea — real API with cooldown ───────────────────
+  const handleShareIdea = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!newIdeaText.trim()) return;
+    if (!newIdeaText.trim() || ideaCooldown > 0) return;
 
-    const newIdea: Idea = {
-      id: `idea-${Date.now()}`,
-      speakerId: 'user-self',
-      speakerName: userName,
-      content: newIdeaText.trim(),
-      timestamp: new Date(),
-      agreeCount: 1,
-      disagreeCount: 0,
-      hasUserAgreed: true,
-    };
-
-    setIdeas([newIdea, ...ideas]);
+    const text = newIdeaText.trim();
     setNewIdeaText('');
+
+    const result = await shareIdea(discussion.id, text);
+    if (result.cooldown) {
+      startCooldown(result.cooldown);
+    } else if (result.idea) {
+      // Optimistic — subscription will update shortly anyway
+      setIdeas(prev => [...prev, {
+        id:           result.idea!.id,
+        speakerId:    result.idea!.userId,
+        speakerName:  result.idea!.userName,
+        content:      result.idea!.content,
+        timestamp:    result.idea!.createdAt,
+        agreeCount:   0,
+        disagreeCount: 0,
+        hasUserAgreed: false,
+        hasUserDisagreed: false,
+      }]);
+      startCooldown(300); // 5 min cooldown
+    }
   };
 
-  const handleHandRaise = () => {
-    if (userRole === 'listener' || userRole === 'speaker') {
-      setHandRaised(!handRaised);
-    }
+  // ── React to idea — real API ──────────────────────────────
+  const handleIdeaReaction = async (ideaId: string, type: 'agree' | 'disagree') => {
+    const result = await reactToIdea(ideaId, type);
+    if (!result) return;
+    setIdeas(prev => prev.map(idea =>
+      idea.id === ideaId
+        ? {
+            ...idea,
+            agreeCount:      result.agreeCount,
+            disagreeCount:   result.disagreeCount,
+            hasUserAgreed:   result.myReaction === 'agree',
+            hasUserDisagreed: result.myReaction === 'disagree',
+          }
+        : idea
+    ));
   };
 
   const handleMicToggle = () => {
-    if (userRole === 'debater') {
-      setMicMuted(!micMuted);
-    }
+    if (userRole === 'debater') setMicMuted(!micMuted);
   };
 
-  const handleIdeaReaction = (ideaId: string, type: 'agree' | 'disagree') => {
-    setIdeas(ideas.map(idea => {
-      if (idea.id === ideaId) {
-        if (type === 'agree') {
-          return {
-            ...idea,
-            hasUserAgreed: !idea.hasUserAgreed,
-            hasUserDisagreed: false,
-            agreeCount: idea.hasUserAgreed ? idea.agreeCount - 1 : idea.agreeCount + 1,
-            disagreeCount: idea.hasUserDisagreed ? idea.disagreeCount - 1 : idea.disagreeCount,
-          };
-        } else {
-          return {
-            ...idea,
-            hasUserDisagreed: !idea.hasUserDisagreed,
-            hasUserAgreed: false,
-            disagreeCount: idea.hasUserDisagreed ? idea.disagreeCount - 1 : idea.disagreeCount + 1,
-            agreeCount: idea.hasUserAgreed ? idea.agreeCount - 1 : idea.agreeCount,
-          };
-        }
-      }
-      return idea;
-    }));
+  const handleHandRaise = () => {
+    if (userRole === 'listener' || userRole === 'speaker') setHandRaised(!handRaised);
   };
-
   const currentSpeaker = participants.find(p => p.isSpeaking);
 
   return (
