@@ -117,7 +117,7 @@ export const fetchAllDiscussions = async (): Promise<any[]> => {
   return [...liveFromBackend, ...supabaseLive, ...upcomingOnly];
 };
 
-// Create a new topic in Supabase
+// Create a new topic + meeting in backend (so admin panel picks it up)
 export const createTopic = async (
   title: string,
   category: string,
@@ -126,33 +126,55 @@ export const createTopic = async (
   scheduledAt: Date | null = null
 ): Promise<string> => {
   try {
+    // 1. Create topic via backend API (creates both topic + meeting in Prisma DB)
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+    const res = await fetch(`${API_URL}/api/discussions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        title,
+        category,
+        language: 'English',
+        scheduledDate: scheduledAt ? scheduledAt.toISOString() : new Date(Date.now() + 24 * 3600000).toISOString(),
+        duration: 60,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const topicId = data.topic?.id || data.id;
+      if (topicId) return topicId;
+    }
+
+    // 2. Fallback — direct Supabase insert if backend fails
+    console.warn('[createTopic] Backend API failed, falling back to Supabase direct insert');
     const { data, error } = await supabase
       .from('topics')
-      .insert([
-        {
-          title,
-          category,
-          created_by: userId,
-          host_name: hostName,
-          current_speaker: hostName,
-          scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
-          status: scheduledAt ? 'upcoming' : 'live',
-          interest_count: 1,
-          listener_count: 1,
-          speaker_count: 1,
-        },
-      ])
+      .insert([{
+        title,
+        category,
+        created_by: userId,
+        host_name: hostName,
+        current_speaker: hostName,
+        scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
+        status: scheduledAt ? 'upcoming' : 'live',
+        interest_count: 1,
+        listener_count: 1,
+        speaker_count: 1,
+      }])
       .select('id')
       .single();
 
     if (error || !data) {
-      console.warn('Supabase topic creation response:', error);
+      console.warn('Supabase topic creation error:', error);
       return `topic_${Date.now()}`;
     }
-
     return data.id;
   } catch (error) {
-    console.error('Error creating topic in Supabase:', error);
+    console.error('Error creating topic:', error);
     return `topic_${Date.now()}`;
   }
 };
