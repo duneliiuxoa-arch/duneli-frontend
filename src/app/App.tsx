@@ -33,6 +33,7 @@ import { themes } from './config/themes';
 import { initializeSecurityDeterrents } from '../services/securityDeterrents';
 import { useAuth } from '../hooks/useAuth';
 import { logout } from '../services/authService';
+import { createTopic, subscribeAllTopics, expressInterest } from '../services/discussionService';
 
 export default function App() {
   // Real Supabase Auth Integration
@@ -68,9 +69,20 @@ export default function App() {
     }
   }, [supabaseAuth.user]);
   
-  // Data State
-  const [discussions, setDiscussions] = useState<Discussion[]>(mockDiscussions);
+  // Data State — Populated 100% from REAL Supabase API
+  const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+
+  // Subscribe to Real Supabase Discussions & Topics
+  useEffect(() => {
+    const unsubscribe = subscribeAllTopics((realDiscussions) => {
+      if (realDiscussions && realDiscussions.length > 0) {
+        setDiscussions(realDiscussions);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
   
   // Discovery State
   const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>('interest');
@@ -204,6 +216,7 @@ export default function App() {
   };
 
   const handleShowInterest = (discussionId: string) => {
+    expressInterest(discussionId, user.id);
     setDiscussions(discussions.map(discussion =>
       discussion.id === discussionId
         ? {
@@ -217,15 +230,21 @@ export default function App() {
     ));
   };
 
-  const handleScheduleDiscussion = (title: string) => {
+  const handleScheduleDiscussion = async (title: string) => {
+    const topicCategory = selectedCategory === 'All' ? 'Technology' : selectedCategory;
+    const scheduledTime = new Date(Date.now() + 24 * 60 * 60000);
+    
+    // Save to Real Supabase API
+    const realTopicId = await createTopic(title, topicCategory, user.id, user.name, scheduledTime);
+
     const newDiscussion: Discussion = {
-      id: `discussion-${Date.now()}`,
+      id: realTopicId,
       title,
-      category: 'Technology',
+      category: topicCategory as Category,
       language: selectedLanguage === 'All' ? 'English' : selectedLanguage,
       status: 'upcoming',
       interestCount: 1,
-      scheduledTime: new Date(Date.now() + 24 * 60 * 60000), // 1 day from now
+      scheduledTime,
       duration: 60,
       hostId: user.id,
       hostName: user.name,
