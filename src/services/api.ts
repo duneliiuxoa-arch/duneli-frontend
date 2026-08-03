@@ -93,13 +93,18 @@ export async function fetchDiscussions(): Promise<RealDiscussion[]> {
   }
 }
 
-export async function createDiscussion(title: string): Promise<string | null> {
+export async function createDiscussion(title: string, scheduledAt?: Date, category?: string, language?: string): Promise<string | null> {
   try {
     const headers = await authHeaders();
     const res = await fetchWithFallback('/api/discussions', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({
+        title,
+        scheduledAt: scheduledAt?.toISOString(),
+        category: category || 'General',
+        language: language || 'English',
+      }),
     });
     if (!res.ok) throw new Error(`${res.status}`);
     const { topic } = await res.json();

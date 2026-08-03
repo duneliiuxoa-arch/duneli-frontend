@@ -246,11 +246,11 @@ export default function App() {
     await voteDiscussion(discussionId);
   };
 
-  const handleScheduleDiscussion = async (title: string) => {
+  const handleScheduleDiscussion = async (title: string, scheduledAt?: Date, category?: string, language?: string) => {
     // Real API
-    const newId = await createDiscussion(title);
-    const scheduledTime = new Date(Date.now() + 24 * 60 * 60000);
-    const topicCategory = selectedCategory === 'All' ? 'Technology' : selectedCategory;
+    const newId = await createDiscussion(title, scheduledAt, category, language);
+    const scheduledTime = scheduledAt || new Date(Date.now() + 24 * 60 * 60000);
+    const topicCategory = category || (selectedCategory === 'All' ? 'Technology' : selectedCategory);
 
     const newDiscussion: Discussion = {
       id:             newId || `topic_${Date.now()}`,

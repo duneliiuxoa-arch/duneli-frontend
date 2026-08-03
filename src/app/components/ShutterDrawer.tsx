@@ -328,7 +328,6 @@ export function ShutterDrawer({ discussions, currentTheme, isLoggedIn, onJoinDis
                       </h4>
 
                       <div className="text-sm text-[#1A1A2E]/50 space-y-0.5 mb-4">
-                        <p>Hosted by {d.hostName}</p>
                         {d.startedTime && (
                           <p className="flex items-center gap-1.5">
                             <Clock className="w-3 h-3" />
@@ -436,7 +435,6 @@ export function ShutterDrawer({ discussions, currentTheme, isLoggedIn, onJoinDis
                       </h4>
 
                       <div className="text-xs mb-4 space-y-1 text-[#1A1A2E]/50">
-                        <p>Hosted by {d.hostName}</p>
                         <p>{d.scheduledTime && formatFullTime(d.scheduledTime)}</p>
                         <p>{d.duration} min · {d.language}</p>
                       </div>

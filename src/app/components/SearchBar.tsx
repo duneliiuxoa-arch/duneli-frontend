@@ -1,4 +1,4 @@
-import { Search, Loader, AlertCircle, CalendarPlus, Plus, Radio, Clock } from 'lucide-react';
+import { Search, Loader, AlertCircle, CalendarPlus, Plus, Radio, Clock, X, Calendar, Globe, Tag } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Theme, Discussion, Language } from '../types';
 import { themes } from '../config/themes';
@@ -6,12 +6,15 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+const CATEGORIES = ['Technology', 'Politics', 'Environment', 'Economics', 'Health', 'Science', 'Culture', 'Sports', 'Education', 'Philosophy', 'General'];
+const LANGUAGES  = ['English', 'Hindi', 'Spanish', 'French', 'Arabic', 'Chinese', 'German', 'Portuguese', 'Other'];
+
 interface SearchBarProps {
   currentTheme: Theme;
   allDiscussions: Discussion[];
   selectedLanguage: Language | 'All';
   isLoggedIn: boolean;
-  onScheduleDiscussion: (title: string) => void;
+  onScheduleDiscussion: (title: string, scheduledAt?: Date, category?: string, language?: string) => void;
   onLoginPrompt: () => void;
   onJoinDiscussion?: (id: string) => void;
 }
@@ -32,6 +35,13 @@ export function SearchBar({
     upcoming: Discussion[];
   }>({ live: [], upcoming: [] });
   const [showResults, setShowResults] = useState(false);
+  const [showDetailsForm, setShowDetailsForm] = useState(false);
+  const [formTitle, setFormTitle]       = useState('');
+  const [formDate, setFormDate]         = useState('');
+  const [formTime, setFormTime]         = useState('');
+  const [formLanguage, setFormLanguage] = useState('English');
+  const [formCategory, setFormCategory] = useState('General');
+  const [formCreating, setFormCreating] = useState(false);
   const theme = themes[currentTheme];
   const abortRef = useRef<AbortController | null>(null);
 
@@ -107,32 +117,180 @@ export function SearchBar({
     return () => clearTimeout(timer);
   }, [searchQuery, allDiscussions, selectedLanguage]);
 
-  const handleScheduleDiscussion = () => {
-    if (!isLoggedIn) {
-      onLoginPrompt();
-      return;
-    }
-    
-    if (searchQuery.trim()) {
-      onScheduleDiscussion(searchQuery);
-      setSearchQuery('');
-      setShowResults(false);
+  const openDetailsForm = () => {
+    if (!isLoggedIn) { onLoginPrompt(); return; }
+    if (!searchQuery.trim()) return;
+    // Pre-fill title from search query
+    setFormTitle(searchQuery.trim());
+    // Default date = tomorrow, time = 18:00
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    setFormDate(tomorrow.toISOString().split('T')[0]);
+    setFormTime('18:00');
+    setFormLanguage('English');
+    setFormCategory('General');
+    setShowResults(false);
+    setShowDetailsForm(true);
+  };
 
-      // Scroll smoothly to upcoming sessions so user sees their new scheduled meeting
-      setTimeout(() => {
-        const el = document.getElementById('upcoming');
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 150);
+  const handleCreateSession = async () => {
+    if (!formTitle.trim() || !formDate || !formTime) return;
+    setFormCreating(true);
+    try {
+      // Combine date + time into ISO string
+      const scheduledAt = new Date(`${formDate}T${formTime}:00`);
+      // Call parent with full details (App.tsx will handle API)
+      await onScheduleDiscussion(formTitle.trim(), scheduledAt, formCategory, formLanguage);
+      // Reset and close
+      setShowDetailsForm(false);
+      setSearchQuery('');
+      setFormTitle('');
+    } catch { /* silent */ } finally {
+      setFormCreating(false);
     }
   };
+
+  // Legacy: kept so existing callers still compile
+  const handleScheduleDiscussion = openDetailsForm;
 
   const totalResults = similarDiscussions.live.length + similarDiscussions.upcoming.length;
   const hasResults = totalResults > 0;
 
   return (
     <div id="search-bar-container" className="w-full max-w-3xl mx-auto relative">
+
+      {/* ── Details Form Modal ── */}
+      <AnimatePresence>
+        {showDetailsForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowDetailsForm(false); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              {/* Header */}
+              <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-[#1A1A2E] tracking-tight">Create Session</h3>
+                  <p className="text-xs text-[#1A1A2E]/50 mt-0.5">Fill in the details for your upcoming session</p>
+                </div>
+                <button onClick={() => setShowDetailsForm(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors">
+                  <X className="w-4 h-4 text-slate-600" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <div className="px-6 py-5 space-y-4">
+
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-bold text-[#1A1A2E]/70 mb-1.5 uppercase tracking-wider">Session Title</label>
+                  <input
+                    type="text"
+                    value={formTitle}
+                    onChange={e => setFormTitle(e.target.value)}
+                    placeholder="e.g. Is AI taking over jobs?"
+                    className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-[#3B5BF6] outline-none text-sm font-semibold text-[#1A1A2E] placeholder:text-slate-400 transition-colors"
+                  />
+                </div>
+
+                {/* Date + Time */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#1A1A2E]/70 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+                      <Calendar className="w-3 h-3" /> Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={e => setFormDate(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-[#3B5BF6] outline-none text-sm font-semibold text-[#1A1A2E] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#1A1A2E]/70 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Time
+                    </label>
+                    <input
+                      type="time"
+                      value={formTime}
+                      onChange={e => setFormTime(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-[#3B5BF6] outline-none text-sm font-semibold text-[#1A1A2E] transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* Category + Language */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#1A1A2E]/70 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+                      <Tag className="w-3 h-3" /> Category
+                    </label>
+                    <select
+                      value={formCategory}
+                      onChange={e => setFormCategory(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-[#3B5BF6] outline-none text-sm font-semibold text-[#1A1A2E] bg-white transition-colors"
+                    >
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#1A1A2E]/70 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+                      <Globe className="w-3 h-3" /> Language
+                    </label>
+                    <select
+                      value={formLanguage}
+                      onChange={e => setFormLanguage(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-[#3B5BF6] outline-none text-sm font-semibold text-[#1A1A2E] bg-white transition-colors"
+                    >
+                      {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Summary preview */}
+                {formTitle && formDate && formTime && (
+                  <div className="px-4 py-3 rounded-2xl bg-blue-50 border border-blue-100">
+                    <p className="text-xs text-[#3B5BF6] font-semibold">
+                      📅 "{formTitle}" · {new Date(`${formDate}T${formTime}`).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} · {formCategory} · {formLanguage}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="px-6 pb-6 flex gap-3">
+                <button
+                  onClick={() => setShowDetailsForm(false)}
+                  className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-sm font-bold text-[#1A1A2E]/60 hover:border-slate-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateSession}
+                  disabled={!formTitle.trim() || !formDate || !formTime || formCreating}
+                  className="flex-2 flex-grow-[2] py-3 px-6 rounded-2xl bg-gradient-to-r from-[#3B5BF6] to-[#7C3AED] text-white text-sm font-extrabold shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  {formCreating ? (
+                    <><Loader className="w-4 h-4 animate-spin" /> Creating…</>
+                  ) : (
+                    <><Plus className="w-4 h-4" /> Create Session</>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
