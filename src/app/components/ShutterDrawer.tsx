@@ -293,7 +293,13 @@ export function ShutterDrawer({ discussions, currentTheme, isLoggedIn, onJoinDis
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {liveDiscussions.map((d) => (
+                {liveDiscussions.length === 0 ? (
+                  <div className="col-span-2 flex flex-col items-center justify-center py-12 rounded-3xl border border-dashed border-blue-200 bg-blue-50/40 text-center">
+                    <div className="text-4xl mb-3">🎙️</div>
+                    <p className="text-sm font-bold text-[#1A1A2E]/60">No live sessions right now</p>
+                    <p className="text-xs text-[#1A1A2E]/40 mt-1">Check back soon or schedule one below</p>
+                  </div>
+                ) : liveDiscussions.map((d) => (
                   <div
                     key={d.id}
                     className="bg-white border border-blue-100 shadow-xl shadow-blue-50/50 rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 group relative overflow-hidden"
@@ -401,7 +407,13 @@ export function ShutterDrawer({ discussions, currentTheme, isLoggedIn, onJoinDis
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredUpcoming.map((d) => (
+                {filteredUpcoming.length === 0 ? (
+                  <div className="col-span-3 flex flex-col items-center justify-center py-12 rounded-3xl border border-dashed border-purple-200 bg-purple-50/30 text-center">
+                    <div className="text-4xl mb-3">📅</div>
+                    <p className="text-sm font-bold text-[#1A1A2E]/60">No upcoming discussions scheduled</p>
+                    <p className="text-xs text-[#1A1A2E]/40 mt-1">Be the first — schedule a topic using the search bar above</p>
+                  </div>
+                ) : filteredUpcoming.map((d) => (
                   <div
                     key={d.id}
                     className="rounded-3xl overflow-hidden bg-white border border-blue-100/70 shadow-lg shadow-blue-50/50 hover:shadow-xl hover:shadow-blue-100/50 transition-shadow"

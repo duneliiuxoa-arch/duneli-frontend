@@ -8,6 +8,23 @@ import { supabase } from '../lib/supabase';
 
 const API = import.meta.env.VITE_API_URL || 'https://duneli-backend.up.railway.app';
 
+// Fallback to Railway if localhost fails
+const API_FALLBACK = 'https://duneli-backend.up.railway.app';
+
+async function fetchWithFallback(path: string, options?: RequestInit): Promise<Response> {
+  try {
+    const res = await fetch(`${API}${path}`, options);
+    if (res.ok) return res;
+    throw new Error(`${res.status}`);
+  } catch {
+    // If localhost fails, try Railway
+    if (API !== API_FALLBACK) {
+      return fetch(`${API_FALLBACK}${path}`, options);
+    }
+    throw new Error('Both endpoints failed');
+  }
+}
+
 // ── Auth headers helper ───────────────────────────────────────
 export async function authHeaders(): Promise<Record<string, string>> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -40,7 +57,7 @@ export interface RealDiscussion {
 export async function fetchDiscussions(): Promise<RealDiscussion[]> {
   try {
     const headers = await authHeaders();
-    const res = await fetch(`${API}/api/discussions?status=ALL&limit=50`, { headers });
+    const res = await fetchWithFallback('/api/discussions?status=ALL&limit=50', { headers });
     if (!res.ok) throw new Error(`${res.status}`);
     const { topics } = await res.json();
 
@@ -76,7 +93,7 @@ export async function fetchDiscussions(): Promise<RealDiscussion[]> {
 export async function createDiscussion(title: string): Promise<string | null> {
   try {
     const headers = await authHeaders();
-    const res = await fetch(`${API}/api/discussions`, {
+    const res = await fetchWithFallback('/api/discussions', {
       method: 'POST',
       headers,
       body: JSON.stringify({ title }),
@@ -93,7 +110,7 @@ export async function createDiscussion(title: string): Promise<string | null> {
 export async function voteDiscussion(topicId: string): Promise<boolean> {
   try {
     const headers = await authHeaders();
-    const res = await fetch(`${API}/api/discussions/${topicId}/vote`, {
+    const res = await fetchWithFallback(`/api/discussions/${topicId}/vote`, {
       method: 'POST',
       headers,
     });
@@ -108,7 +125,7 @@ export async function voteDiscussion(topicId: string): Promise<boolean> {
 export async function joinMeeting(topicId: string): Promise<void> {
   try {
     const headers = await authHeaders();
-    await fetch(`${API}/api/discussions/${topicId}/join`, { method: 'POST', headers });
+    await fetchWithFallback(`/api/discussions/${topicId}/join`, { method: 'POST', headers });
   } catch (e) {
     console.warn('[api] joinMeeting failed:', e);
   }
@@ -117,7 +134,7 @@ export async function joinMeeting(topicId: string): Promise<void> {
 export async function leaveMeeting(topicId: string): Promise<void> {
   try {
     const headers = await authHeaders();
-    await fetch(`${API}/api/discussions/${topicId}/leave`, { method: 'POST', headers });
+    await fetchWithFallback(`/api/discussions/${topicId}/leave`, { method: 'POST', headers });
   } catch (e) {
     console.warn('[api] leaveMeeting failed:', e);
   }
