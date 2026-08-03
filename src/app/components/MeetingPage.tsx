@@ -73,7 +73,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const anonIdRef       = useRef('');
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-  const canShareIdea = userRole === 'speaker' || userRole === 'debater';
+  const canShareIdea = true; // ALL roles can share ideas — listener bhi
 
   // ── Session ────────────────────────────────────────────────
   useEffect(() => {
@@ -563,10 +563,12 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                 <span>{micMuted ? 'Unmute' : 'Mute'}</span>
               </button>
             )}
-            <button onClick={() => setChatOpen(o => !o)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:scale-105 cursor-pointer ${chatOpen ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`}`}>
-              <MessageSquare className="w-4 h-4" /><span>Chat</span>
-            </button>
+            {(userRole === 'debater' || userRole === 'speaker') && (
+              <button onClick={() => setChatOpen(o => !o)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:scale-105 cursor-pointer ${chatOpen ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`}`}>
+                <MessageSquare className="w-4 h-4" /><span>Chat</span>
+              </button>
+            )}
           </div>
           <button onClick={onLeave}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500 text-red-500 hover:text-white text-xs font-extrabold transition-all hover:scale-105 cursor-pointer">

@@ -36,8 +36,8 @@ const fetchLiveMeetings = async (): Promise<any[]> => {
     const data = await res.json();
     const topics = data.topics || [];
 
-    // A topic is LIVE if it has a meeting with SCHEDULED status
-    const live = topics.filter((t: any) => t.meeting?.status === 'SCHEDULED');
+    // A topic is LIVE if it has ANY meeting (regardless of status or attendees)
+    const live = topics.filter((t: any) => t.meeting?.id);
 
     return live.map((t: any) => ({
       id:             t.id,               // topicId — used for joining
