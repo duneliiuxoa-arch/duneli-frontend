@@ -1,4 +1,3 @@
-import { LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface EntryScreenProps {
@@ -125,15 +124,6 @@ export function EntryScreen({ onLogin, onContinueAsGuest }: EntryScreenProps) {
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
               </svg>
               <span className="font-semibold">Continue with Google</span>
-            </button>
-
-            {/* Mobile Number Login */}
-            <button
-              onClick={onLogin}
-              className="w-full bg-white hover:bg-gray-50 text-gray-900 px-6 py-4 rounded-2xl transition-all hover:scale-105 flex items-center justify-center gap-3 shadow-md border border-gray-100"
-            >
-              <LogIn className="w-5 h-5 text-[#3B5BF6]" />
-              <span className="font-semibold">Login with Mobile (OTP)</span>
             </button>
 
             {/* Divider */}
