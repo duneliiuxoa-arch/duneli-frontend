@@ -63,9 +63,12 @@ export async function fetchDiscussions(): Promise<RealDiscussion[]> {
 
     return (topics || []).map((t: any): RealDiscussion => {
       const meetingStatus = t.meeting?.status;
+      const topicStatus   = t.status; // ACTIVE | SELECTED | CLOSED
       const status: RealDiscussion['status'] =
         meetingStatus === 'SCHEDULED' ? 'live' :
-        meetingStatus === 'COMPLETED' ? 'ended' : 'upcoming';
+        meetingStatus === 'COMPLETED' ? 'ended' :
+        topicStatus   === 'SELECTED'  ? 'live' :   // SELECTED = admin picked it → treat as live
+        'upcoming';
 
       return {
         id:              t.id,
