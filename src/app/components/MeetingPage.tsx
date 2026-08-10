@@ -25,11 +25,6 @@ const toAnonDisplay = (userId: string, myId: string, myName: string): string => 
 
 interface QueueEntry { agoraUid: string; userId: string; anonId: string; joinedAt: number; }
 
-interface ChatMsg {
-  id: string; message: string; createdAt: string;
-  user: { id: string; name: string; anonymousId: string | null }; pending?: boolean;
-}
-
 interface MeetingPageProps {
   discussion: Discussion; currentTheme: Theme;
   userRole: Role; userName: string; onLeave: () => void;
@@ -66,13 +61,6 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const [newIdeaText, setNewIdeaText] = useState('');
   const [ideaCooldown, setIdeaCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Chat state ─────────────────────────────────────────────
-  const [chatOpen, setChatOpen]     = useState(false);
-  const [chatMsgs, setChatMsgs]     = useState<ChatMsg[]>([]);
-  const [chatInput, setChatInput]   = useState('');
-  const [chatSending, setChatSending] = useState(false);
-  const chatBottomRef               = useRef<HTMLDivElement>(null);
 
   // ── Refs ───────────────────────────────────────────────────
   const realtimeRef     = useRef<any>(null);
@@ -154,46 +142,6 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
       hasUserDisagreed: result.myReaction === 'disagree',
     } : idea));
   };
-
-  // ── Chat fetch ─────────────────────────────────────────────
-  const fetchMessages = useCallback(async () => {
-    if (!sessionToken) return;
-    try {
-      const res = await fetch(`${API_URL}/api/discussions/${discussion.id}/messages?limit=60`, {
-        headers: { Authorization: `Bearer ${sessionToken}` },
-      });
-      if (res.ok) { const d = await res.json(); setChatMsgs(d.messages || []); }
-    } catch { /* silent */ }
-  }, [discussion.id, sessionToken]);
-
-  useEffect(() => {
-    if (!sessionToken) return;
-    fetchMessages();
-    pollRef.current = setInterval(fetchMessages, 4000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [fetchMessages, sessionToken]);
-
-  useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
-
-  const sendMessage = async () => {
-    const text = chatInput.trim();
-    if (!text || chatSending || !sessionToken) return;
-    const tempId = `tmp-${Date.now()}`;
-    setChatMsgs(prev => [...prev, { id: tempId, message: text, createdAt: new Date().toISOString(), user: { id: currentUserId, name: userName, anonymousId: null }, pending: true }]);
-    setChatInput(''); setChatSending(true);
-    try {
-      const res = await fetch(`${API_URL}/api/discussions/${discussion.id}/messages`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
-        body: JSON.stringify({ message: text }),
-      });
-      if (!res.ok) throw new Error();
-      const d = await res.json();
-      setChatMsgs(prev => prev.map(m => m.id === tempId ? { ...d.message, pending: false } : m));
-    } catch { setChatMsgs(prev => prev.filter(m => m.id !== tempId)); }
-    finally { setChatSending(false); }
-  };
-
-  const handleChatKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
 
   // ── Agora + Supabase Presence (REAL participants, ANONYMOUS) ─
   useEffect(() => {
@@ -700,46 +648,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
               </div>
             </div>
           </div>
-
-          {/* ── Chat Panel ── */}
-          <AnimatePresence>
-            {chatOpen && (
-              <motion.div key="chat" initial={{ width: 0, opacity: 0 }} animate={{ width: 280, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.2 }}
-                className={`flex flex-col overflow-hidden border-l ${borderC} ${isDark ? 'bg-white/5' : 'bg-gray-50'}`} style={{ minWidth: 0 }}>
-                <div className={`flex items-center justify-between px-4 py-3 border-b ${borderC} shrink-0`}>
-                  <span className={`text-xs font-extrabold flex items-center gap-1.5 ${theme.textColor}`}><MessageSquare className="w-3.5 h-3.5 text-indigo-400" />Chat</span>
-                  <button onClick={() => setChatOpen(false)} className="opacity-40 hover:opacity-70"><X className="w-4 h-4" /></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-                  {chatMsgs.length === 0 && <p className="text-xs opacity-40 text-center mt-6">No messages yet.</p>}
-                  {chatMsgs.map(msg => {
-                    const isOwn = msg.user.id === currentUserId;
-                    // Anonymous chat — show DNL id for others
-                    const displayName = isOwn ? 'You' : (msg.user.anonymousId || toAnonDisplay(msg.user.id, currentUserId, userName));
-                    return (
-                      <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
-                        {!isOwn && <span className="text-[10px] opacity-50 mb-0.5 ml-1">{displayName}</span>}
-                        <div className={`max-w-[85%] px-3 py-1.5 rounded-2xl text-xs ${isOwn ? (isDark ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white') : (isDark ? 'bg-white/10 text-white' : 'bg-white border border-gray-200 text-gray-800')} ${msg.pending ? 'opacity-60' : ''}`}>
-                          {msg.message}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={chatBottomRef} />
-                </div>
-                <div className={`flex items-center gap-2 px-3 py-2.5 border-t ${borderC} shrink-0`}>
-                  <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={handleChatKey} placeholder="Type a message…"
-                    className={`flex-1 text-xs px-3 py-1.5 rounded-full outline-none ${isDark ? 'bg-white/10 placeholder:text-white/30 text-white' : 'bg-white border border-gray-200 text-gray-800 placeholder:text-gray-400'}`} />
-                  <button onClick={sendMessage} disabled={!chatInput.trim() || chatSending}
-                    className="p-1.5 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-40 transition-colors shrink-0">
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
-      </div>
 
       {/* ── My Turn Modal ── */}
       <AnimatePresence>
@@ -836,10 +745,7 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
               </button>
             )}
             {(userRole === 'debater' || userRole === 'speaker') && (
-              <button onClick={() => setChatOpen(o => !o)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:scale-105 cursor-pointer ${chatOpen ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`}`}>
-                <MessageSquare className="w-4 h-4" /><span>Chat</span>
-              </button>
+              <div className="hidden" />
             )}
           </div>
           <button onClick={onLeave}
