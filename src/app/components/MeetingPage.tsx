@@ -1,4 +1,4 @@
-import { Radio, Users, Clock, Hand, ThumbsUp, ThumbsDown, Mic, MicOff, LogOut, Volume2, Headphones, Send, MessageSquare, X } from 'lucide-react';
+import { Radio, Users, Clock, Hand, ThumbsUp, ThumbsDown, Mic, MicOff, LogOut, Volume2, Headphones, Send, MessageSquare, X, PlayCircle, SkipForward } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Theme, Role, Discussion, Participant, Idea } from '../types';
 import { themes } from '../config/themes';
@@ -12,17 +12,18 @@ import {
 import { transcriptionService } from '../../services/transcriptionService';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const SPEAK_LIMIT    = 180; // 3 min
+const TURN_COUNTDOWN = 10;  // 10 sec to accept turn
 
-// ── Anonymous ID generator ────────────────────────────────────
-// Given a userId, always returns same DNL-XXXX string
 const toAnonDisplay = (userId: string, myId: string, myName: string): string => {
-  if (userId === myId) return myName; // sirf apna real naam khud ko dikhao
-  // Hash userId to short 4-char code
+  if (userId === myId) return myName;
   let hash = 0;
   for (let i = 0; i < userId.length; i++) { hash = ((hash << 5) - hash) + userId.charCodeAt(i); hash |= 0; }
   const code = Math.abs(hash).toString(36).toUpperCase().slice(0, 4).padEnd(4, 'X');
   return `DNL-${code}`;
 };
+
+interface QueueEntry { agoraUid: string; userId: string; anonId: string; joinedAt: number; }
 
 interface ChatMsg {
   id: string; message: string; createdAt: string;
@@ -38,6 +39,15 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const theme   = themes[currentTheme];
   const isDark  = theme.textColor === 'text-white';
   const borderC = isDark ? 'border-white/10' : 'border-gray-200';
+
+  // ── Speaker Queue state ──────────────────────────────────
+  const [speakerQueue, setSpeakerQueue]       = useState<QueueEntry[]>([]);
+  const [inQueue, setInQueue]                 = useState(false);
+  const [myTurn, setMyTurn]                   = useState(false);       // it's my turn now
+  const [turnCountdown, setTurnCountdown]     = useState(0);           // 10s to accept
+  const [isSpeaking, setIsSpeaking]           = useState(false);       // actively speaking
+  const turnTimerRef                          = useRef<ReturnType<typeof setInterval> | null>(null);
+  const speakTimerRef2                        = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Core state ────────────────────────────────────────────
   const [elapsedTime, setElapsedTime]         = useState(0);
@@ -249,6 +259,14 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
               p.id === String(payload.agoraUid) || p.userId === payload.userId ? { ...p, handRaised: payload.raised } : p
             ));
           })
+          .on('broadcast', { event: 'queue_update' }, ({ payload }: any) => {
+            // Sync queue from broadcaster
+            setSpeakerQueue(payload.queue || []);
+            // Check if it's MY turn (first in queue)
+            if (payload.queue?.length > 0 && payload.queue[0].userId === userIdRef.current) {
+              startMyTurn();
+            }
+          })
           .subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
               // Track with anonId — never broadcast real name
@@ -314,6 +332,104 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
     setParticipants(prev => prev.map(p => p.id === String(toAgoraUid(currentUserId)) || p.userId === currentUserId ? { ...p, handRaised: next } : p));
   };
 
+  // ── Queue broadcast helper ────────────────────────────────
+  const broadcastQueue = (queue: QueueEntry[]) => {
+    realtimeRef.current?.send({ type: 'broadcast', event: 'queue_update', payload: { queue } });
+  };
+
+  // ── Join / Leave queue ───────────────────────────────────────
+  const handleJoinQueue = () => {
+    if (userRole !== 'speaker') return;
+    if (inQueue) {
+      // Leave queue
+      const next = speakerQueue.filter(e => e.userId !== currentUserId);
+      setSpeakerQueue(next); setInQueue(false);
+      broadcastQueue(next);
+      // Update hand raise visual
+      setParticipants(prev => prev.map(p => p.userId === currentUserId || p.id === String(toAgoraUid(currentUserId)) ? { ...p, handRaised: false } : p));
+      realtimeRef.current?.track({ agoraUid: String(toAgoraUid(currentUserId)), userId: currentUserId, role: userRole, anonId: anonIdRef.current, handRaised: false });
+    } else {
+      // Join queue
+      const entry: QueueEntry = { agoraUid: String(toAgoraUid(currentUserId)), userId: currentUserId, anonId: anonIdRef.current, joinedAt: Date.now() };
+      const next = [...speakerQueue.filter(e => e.userId !== currentUserId), entry];
+      setSpeakerQueue(next); setInQueue(true);
+      broadcastQueue(next);
+      // Update hand raise visual
+      setParticipants(prev => prev.map(p => p.userId === currentUserId || p.id === String(toAgoraUid(currentUserId)) ? { ...p, handRaised: true } : p));
+      realtimeRef.current?.track({ agoraUid: String(toAgoraUid(currentUserId)), userId: currentUserId, role: userRole, anonId: anonIdRef.current, handRaised: true });
+      // If I'm first in queue, start my turn immediately
+      if (next[0].userId === currentUserId) startMyTurn();
+    }
+  };
+
+  // ── My turn starts (10s countdown) ───────────────────────────
+  const startMyTurn = () => {
+    if (turnTimerRef.current) clearInterval(turnTimerRef.current);
+    setMyTurn(true); setTurnCountdown(TURN_COUNTDOWN);
+    turnTimerRef.current = setInterval(() => {
+      setTurnCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(turnTimerRef.current!);
+          // Auto-skip if no action
+          skipTurn();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // ── Accept turn → start speaking ─────────────────────────────
+  const acceptTurn = async () => {
+    if (turnTimerRef.current) clearInterval(turnTimerRef.current);
+    setMyTurn(false); setTurnCountdown(0); setIsSpeaking(true);
+    // Unmute mic
+    try { await toggleMicrophone(true); setMicMuted(false); } catch { }
+    // Start 3 min limit
+    setSpeakerTimeLeft(SPEAK_LIMIT);
+    if (speakerTimerRef.current) clearInterval(speakerTimerRef.current);
+    speakerTimerRef.current = setInterval(() => {
+      setSpeakerTimeLeft(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(speakerTimerRef.current!);
+          endSpeaking(true);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    // Transcription
+    if (!isTranscribing) {
+      transcriptionService.start(meetingIdRef.current, userIdRef.current, anonIdRef.current,
+        seg => seg.isFinal ? setLiveTranscript('') : setLiveTranscript(seg.text)
+      ).then(() => setIsTranscribing(true)).catch(() => {});
+    }
+  };
+
+  // ── Skip / Done speaking ──────────────────────────────────────
+  const skipTurn = () => {
+    if (turnTimerRef.current) clearInterval(turnTimerRef.current);
+    setMyTurn(false); setTurnCountdown(0);
+    // Remove from queue
+    const next = speakerQueue.filter(e => e.userId !== currentUserId);
+    setSpeakerQueue(next); setInQueue(false);
+    broadcastQueue(next);
+    setParticipants(prev => prev.map(p => p.userId === currentUserId || p.id === String(toAgoraUid(currentUserId)) ? { ...p, handRaised: false } : p));
+  };
+
+  const endSpeaking = async (auto = false) => {
+    if (speakerTimerRef.current) clearInterval(speakerTimerRef.current);
+    setSpeakerTimeLeft(null); setIsSpeaking(false); setMicMuted(true);
+    try { await toggleMicrophone(false); } catch { }
+    if (isTranscribing) { transcriptionService.stop().then(() => { setIsTranscribing(false); setLiveTranscript(''); }); }
+    // Remove from front of queue, notify others
+    const next = speakerQueue.filter(e => e.userId !== currentUserId);
+    setSpeakerQueue(next); setInQueue(false);
+    broadcastQueue(next);
+    setParticipants(prev => prev.map(p => p.userId === currentUserId || p.id === String(toAgoraUid(currentUserId)) ? { ...p, handRaised: false } : p));
+    realtimeRef.current?.track({ agoraUid: String(toAgoraUid(currentUserId)), userId: currentUserId, role: userRole, anonId: anonIdRef.current, handRaised: false });
+  };
+
   const uniqueParticipants = participants.filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i);
   const raisedHands        = uniqueParticipants.filter(p => p.handRaised);
   const currentSpeaker     = uniqueParticipants.find(p => p.isSpeaking);
@@ -368,17 +484,26 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
           )}
 
           {/* Speaking Queue */}
-          {raisedHands.length > 0 && (
+          {speakerQueue.length > 0 && (
             <div>
-              <h3 className={`text-xs uppercase font-extrabold tracking-wider opacity-60 mb-2 ${theme.textColor}`}>Speaking Queue ({raisedHands.length})</h3>
+              <h3 className={`text-xs uppercase font-extrabold tracking-wider opacity-60 mb-2 ${theme.textColor}`}>Speaking Queue ({speakerQueue.length})</h3>
               <div className="space-y-2">
-                {raisedHands.map((p, i) => (
-                  <div key={p.id} className={`${theme.cardStyle} rounded-xl px-3.5 py-2 flex items-center gap-2.5`}>
-                    <div className={`w-5 h-5 rounded-full ${theme.buttonClass} flex items-center justify-center text-[10px] font-bold shrink-0`}>{i + 1}</div>
-                    <span className="flex-1 text-xs font-semibold truncate">{p.name}</span>
-                    <Hand className="w-3.5 h-3.5 opacity-60 shrink-0" />
-                  </div>
-                ))}
+                {speakerQueue.map((entry, i) => {
+                  const isMe = entry.userId === currentUserId;
+                  return (
+                    <div key={entry.userId} className={`rounded-xl px-3.5 py-2 flex items-center gap-2.5 ${
+                      i === 0 ? 'bg-green-500/15 border border-green-500/30' : theme.cardStyle
+                    }`}>
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                        i === 0 ? 'bg-green-500 text-white' : theme.buttonClass
+                      }`}>{i + 1}</div>
+                      <span className="flex-1 text-xs font-semibold truncate">
+                        {isMe ? `You${i === 0 ? ' — Your turn!' : ''}` : entry.anonId}
+                      </span>
+                      {i === 0 && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" /></span>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -546,17 +671,94 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
         </div>
       </div>
 
+      {/* ── My Turn Modal ── */}
+      <AnimatePresence>
+        {myTurn && (
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="rounded-3xl p-8 text-center max-w-sm w-full mx-4 shadow-2xl"
+              style={{ background: isDark ? '#1a1a2e' : '#fff', border: '2px solid rgba(59,91,246,0.4)' }}
+              initial={{ scale: 0.85, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.85, y: 20 }}>
+              {/* Countdown ring */}
+              <div className="relative w-24 h-24 mx-auto mb-5">
+                <svg className="w-24 h-24 -rotate-90" viewBox="0 0 96 96">
+                  <circle cx="48" cy="48" r="40" fill="none" stroke="rgba(59,91,246,0.15)" strokeWidth="8" />
+                  <circle cx="48" cy="48" r="40" fill="none" stroke="#3B5BF6" strokeWidth="8"
+                    strokeDasharray={`${2 * Math.PI * 40}`}
+                    strokeDashoffset={`${2 * Math.PI * 40 * (1 - turnCountdown / TURN_COUNTDOWN)}`}
+                    strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s linear' }} />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-3xl font-black" style={{ color: '#3B5BF6' }}>{turnCountdown}</span>
+                </div>
+              </div>
+              <h2 className={`text-xl font-black mb-1 ${theme.textColor}`}>It's Your Turn!</h2>
+              <p className={`text-sm opacity-60 mb-6 ${theme.textColor}`}>Click Speak Now or it'll be skipped automatically</p>
+              <div className="flex gap-3">
+                <button onClick={skipTurn}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold transition-all ${theme.cardStyle} hover:bg-white/10`}>
+                  <SkipForward className="w-4 h-4" /> Skip
+                </button>
+                <button onClick={acceptTurn}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-black bg-gradient-to-r from-[#3B5BF6] to-[#7C3AED] text-white shadow-lg hover:scale-105 transition-all">
+                  <PlayCircle className="w-4 h-4" /> Speak Now
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Speaking active bar ── */}
+      <AnimatePresence>
+        {isSpeaking && speakerTimeLeft !== null && (
+          <motion.div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-2.5 rounded-2xl shadow-xl"
+            style={{ background: 'linear-gradient(135deg,#3B5BF6,#7C3AED)', color: 'white' }}
+            initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+            <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white" /></span>
+            <span className="text-xs font-black">SPEAKING</span>
+            <span className={`font-mono font-black text-sm ${ speakerTimeLeft <= 30 ? 'text-red-300' : 'text-white'}`}>{formatTime(speakerTimeLeft)}</span>
+            <button onClick={() => endSpeaking(false)}
+              className="ml-2 px-3 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-xs font-bold transition-all">
+              Done
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Bottom Bar ── */}
       <div className={`${theme.cardStyle} px-6 py-3.5 shrink-0 border-t ${borderC}`}>
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
-            {(userRole === 'listener' || userRole === 'speaker') && (
+            {/* Speaker: Queue button */}
+            {userRole === 'speaker' && !isSpeaking && (
+              <button onClick={handleJoinQueue}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:scale-105 cursor-pointer ${
+                  inQueue
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30'
+                    : `${theme.cardStyle} hover:bg-white/10`
+                }`}>
+                <Hand className="w-4 h-4" />
+                <span>{inQueue ? `In Queue #${speakerQueue.findIndex(e => e.userId === currentUserId) + 1}` : 'Raise Hand'}</span>
+              </button>
+            )}
+            {/* Speaker: Done speaking */}
+            {userRole === 'speaker' && isSpeaking && (
+              <button onClick={() => endSpeaking(false)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 transition-all hover:scale-105 cursor-pointer">
+                <MicOff className="w-4 h-4" /> Done Speaking
+              </button>
+            )}
+            {/* Listener: Raise hand */}
+            {userRole === 'listener' && (
               <button onClick={handleHandRaise}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:scale-105 cursor-pointer ${handRaised ? theme.buttonClass : `${theme.cardStyle} hover:bg-white/10`}`}>
                 <Hand className={`w-4 h-4 ${handRaised ? '' : 'opacity-70'}`} /><span>{handRaised ? 'Hand Raised' : 'Raise Hand'}</span>
               </button>
             )}
-            {(userRole === 'debater' || userRole === 'speaker') && (
+            {/* Debater: mic */}
+            {userRole === 'debater' && (
               <button onClick={handleMicToggle}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:scale-105 cursor-pointer ${!micMuted ? 'bg-green-500 text-white' : `${theme.cardStyle} hover:bg-white/10`}`}>
                 {micMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
