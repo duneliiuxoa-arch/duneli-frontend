@@ -1,5 +1,6 @@
 import { Search, Loader, AlertCircle, CalendarPlus, Plus, Radio, Clock, X, Calendar, Globe, Tag } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Theme, Discussion, Language } from '../types';
 import { themes } from '../config/themes';
 import { motion, AnimatePresence } from 'motion/react';

@@ -534,6 +534,62 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
             </div>
             {/* Privacy note */}
             <p className="text-[10px] opacity-30 mt-3 text-center">🔒 Names are anonymous to others</p>
+
+            {/* ── Role Definitions ── */}
+            <div className={`mt-5 pt-4 border-t ${borderC}`}>
+              <h3 className={`text-[10px] uppercase font-extrabold tracking-wider opacity-50 mb-3 ${theme.textColor}`}>
+                Role Guide
+              </h3>
+              <div className="space-y-2">
+                {/* Listener */}
+                <div className={`rounded-xl p-3 flex items-start gap-2.5 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'listener' ? `border ${isDark ? 'border-blue-400/30' : 'border-blue-300/50'}` : ''}`}>
+                  <div className="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <Headphones className="w-3.5 h-3.5 text-blue-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-[11px] font-bold ${theme.textColor}`}>Listener</p>
+                      {userRole === 'listener' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold">You</span>}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 leading-relaxed ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                      Listen only · Mic OFF · Can raise hand to speak · Can share ideas
+                    </p>
+                  </div>
+                </div>
+
+                {/* Speaker */}
+                <div className={`rounded-xl p-3 flex items-start gap-2.5 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'speaker' ? `border ${isDark ? 'border-purple-400/30' : 'border-purple-300/50'}` : ''}`}>
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <Mic className="w-3.5 h-3.5 text-purple-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-[11px] font-bold ${theme.textColor}`}>Speaker</p>
+                      {userRole === 'speaker' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-bold">You</span>}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 leading-relaxed ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                      Speaks in turns · Raise hand → wait for queue → 3 min slot
+                    </p>
+                  </div>
+                </div>
+
+                {/* Debater */}
+                <div className={`rounded-xl p-3 flex items-start gap-2.5 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'debater' ? `border ${isDark ? 'border-orange-400/30' : 'border-orange-300/50'}` : ''}`}>
+                  <div className="w-7 h-7 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <Volume2 className="w-3.5 h-3.5 text-orange-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-[11px] font-bold ${theme.textColor}`}>Debater</p>
+                      {userRole === 'debater' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-bold">You</span>}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 leading-relaxed ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                      Open mic anytime · No queue · Full debate access
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -546,9 +602,23 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
               {currentSpeaker ? (
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                   className={`${theme.cardStyle} rounded-2xl p-5 text-center`}>
-                  <div className={`w-16 h-16 rounded-full ${theme.buttonClass} flex items-center justify-center text-2xl font-black mx-auto mb-2 shadow-lg`}>{currentSpeaker.name.charAt(0).toUpperCase()}</div>
-                  <h2 className={`text-xl font-black mb-0.5 ${theme.textColor}`}>{currentSpeaker.name}</h2>
-                  <p className={`text-xs font-semibold ${theme.textColor} opacity-75 capitalize`}>{currentSpeaker.role} • Currently Speaking</p>
+                  {/* Avatar */}
+                  <div className={`w-16 h-16 rounded-full ${theme.buttonClass} flex items-center justify-center text-2xl font-black mx-auto mb-3 shadow-lg`}>
+                    {currentSpeaker.name.charAt(0).toUpperCase()}
+                  </div>
+                  {/* Anonymous ID — visible to everyone */}
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold mb-2 ${isDark ? 'bg-white/10 text-white/60' : 'bg-gray-100 text-gray-500'}`}>
+                    🎙️ {currentSpeaker.userId && currentSpeaker.userId !== currentUserId
+                      ? toAnonDisplay(currentSpeaker.userId, currentUserId, userName)
+                      : currentSpeaker.name === userName
+                        ? 'You'
+                        : toAnonDisplay(currentSpeaker.id, currentUserId, userName)
+                    }
+                  </div>
+                  {/* Role badge */}
+                  <p className={`text-xs font-semibold ${theme.textColor} opacity-60 capitalize`}>
+                    {currentSpeaker.role} • Currently Speaking
+                  </p>
                   {liveTranscript && <p className={`mt-2 text-xs italic opacity-60 ${theme.textColor}`}>🎙️ {liveTranscript}</p>}
                 </motion.div>
               ) : (
