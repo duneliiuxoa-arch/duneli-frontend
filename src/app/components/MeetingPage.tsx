@@ -649,6 +649,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
             </div>
           </div>
         </div>
+      </div>
+      </div>
 
       {/* ── My Turn Modal ── */}
       <AnimatePresence>
