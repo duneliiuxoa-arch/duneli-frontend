@@ -763,11 +763,11 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                   <span className="text-3xl font-black" style={{ color: '#3B5BF6' }}>{turnCountdown}</span>
                 </div>
               </div>
-              <h2 className={`text-xl font-black mb-1 ${theme.textColor}`}>It's Your Turn!</h2>
-              <p className={`text-sm opacity-60 mb-6 ${theme.textColor}`}>Click Speak Now or it'll be skipped automatically</p>
+              <h2 className="text-xl font-black mb-1 text-[#1A1A2E]">It's Your Turn!</h2>
+              <p className="text-sm text-[#1A1A2E]/60 mb-6">Click Speak Now or it'll be skipped automatically</p>
               <div className="flex gap-3">
                 <button onClick={skipTurn}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold transition-all ${theme.cardStyle} hover:bg-white/10`}>
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold transition-all bg-gray-100 hover:bg-gray-200 text-[#1A1A2E]">
                   <SkipForward className="w-4 h-4" /> Skip
                 </button>
                 <button onClick={acceptTurn}
