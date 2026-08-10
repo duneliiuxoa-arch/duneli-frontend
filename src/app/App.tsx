@@ -280,11 +280,17 @@ export default function App() {
   };
 
   const handleJoinDiscussion = (discussionId: string) => {
+    // ── Auth guard — login required to join ──────────────────
+    if (!supabaseAuth.user || supabaseAuth.user.isGuest) {
+      setShowLoginModal(true);
+      return;
+    }
+
     const discussion = discussions.find(d => d.id === discussionId);
     if (discussion) {
       setSelectedDiscussion(discussion);
       setCurrentPage('roleSelection');
-      joinMeeting(discussionId); // real API — attendee count update
+      joinMeeting(discussionId);
     }
   };
 
@@ -378,8 +384,13 @@ export default function App() {
       );
     }
 
-    // Role Selection Page
+    // Role Selection Page — auth required
     if (currentPage === 'roleSelection' && selectedDiscussion) {
+      if (!supabaseAuth.user || supabaseAuth.user.isGuest) {
+        setCurrentPage('homepage');
+        setShowLoginModal(true);
+        return null;
+      }
       return (
         <RoleSelectionPage
           discussion={selectedDiscussion}
@@ -390,8 +401,13 @@ export default function App() {
       );
     }
 
-    // Meeting Page
+    // Meeting Page — auth required
     if (currentPage === 'meeting' && selectedDiscussion && selectedRole) {
+      if (!supabaseAuth.user || supabaseAuth.user.isGuest) {
+        setCurrentPage('homepage');
+        setShowLoginModal(true);
+        return null;
+      }
       return (
         <MeetingPage
           discussion={selectedDiscussion}
