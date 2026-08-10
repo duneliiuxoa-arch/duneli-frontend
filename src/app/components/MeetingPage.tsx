@@ -483,59 +483,115 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
             {/* Privacy note */}
             <p className="text-[10px] opacity-30 mt-3 text-center">🔒 Names are anonymous to others</p>
 
-            {/* ── Role Definitions ── */}
+            {/* ── Role Sections with real users ── */}
             <div className={`mt-5 pt-4 border-t ${borderC}`}>
               <h3 className={`text-[10px] uppercase font-extrabold tracking-wider opacity-50 mb-3 ${theme.textColor}`}>
                 Role Guide
               </h3>
               <div className="space-y-2">
                 {/* Listener */}
-                <div className={`rounded-xl p-3 flex items-start gap-2.5 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'listener' ? `border ${isDark ? 'border-blue-400/30' : 'border-blue-300/50'}` : ''}`}>
-                  <div className="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                    <Headphones className="w-3.5 h-3.5 text-blue-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className={`text-[11px] font-bold ${theme.textColor}`}>Listener</p>
-                      {userRole === 'listener' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold">You</span>}
+                {(() => {
+                  const listeners = uniqueParticipants.filter(p => p.role === 'listener');
+                  return (
+                    <div className={`rounded-xl p-3 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'listener' ? `border ${isDark ? 'border-blue-400/30' : 'border-blue-300/50'}` : ''}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+                          <Headphones className="w-3 h-3 text-blue-400" />
+                        </div>
+                        <p className={`text-[11px] font-bold ${theme.textColor}`}>Listener</p>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ml-auto ${isDark ? 'bg-white/10 text-white/40' : 'bg-gray-200 text-gray-500'}`}>{listeners.length}</span>
+                      </div>
+                      {listeners.length === 0 ? (
+                        <p className={`text-[10px] ${isDark ? 'text-white/25' : 'text-gray-400'}`}>No listeners yet</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {listeners.map(p => {
+                            const isMe = p.userId === currentUserId || p.id === String(toAgoraUid(currentUserId));
+                            return (
+                              <span key={p.id} className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                                isMe
+                                  ? 'bg-blue-500/25 text-blue-400 border border-blue-400/30'
+                                  : isDark ? 'bg-white/8 text-white/40' : 'bg-gray-200 text-gray-500'
+                              }`}>
+                                {isMe ? 'You' : (p.userId ? toAnonDisplay(p.userId, currentUserId, userName) : p.name)}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <p className={`text-[10px] mt-0.5 leading-relaxed ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                      Listen only · Mic OFF · Can raise hand to speak · Can share ideas
-                    </p>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Speaker */}
-                <div className={`rounded-xl p-3 flex items-start gap-2.5 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'speaker' ? `border ${isDark ? 'border-purple-400/30' : 'border-purple-300/50'}` : ''}`}>
-                  <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                    <Mic className="w-3.5 h-3.5 text-purple-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className={`text-[11px] font-bold ${theme.textColor}`}>Speaker</p>
-                      {userRole === 'speaker' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-bold">You</span>}
+                {(() => {
+                  const speakers = uniqueParticipants.filter(p => p.role === 'speaker');
+                  return (
+                    <div className={`rounded-xl p-3 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'speaker' ? `border ${isDark ? 'border-purple-400/30' : 'border-purple-300/50'}` : ''}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
+                          <Mic className="w-3 h-3 text-purple-400" />
+                        </div>
+                        <p className={`text-[11px] font-bold ${theme.textColor}`}>Speaker</p>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ml-auto ${isDark ? 'bg-white/10 text-white/40' : 'bg-gray-200 text-gray-500'}`}>{speakers.length}</span>
+                      </div>
+                      {speakers.length === 0 ? (
+                        <p className={`text-[10px] ${isDark ? 'text-white/25' : 'text-gray-400'}`}>No speakers yet</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {speakers.map(p => {
+                            const isMe = p.userId === currentUserId || p.id === String(toAgoraUid(currentUserId));
+                            return (
+                              <span key={p.id} className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                isMe
+                                  ? 'bg-purple-500/25 text-purple-400 border border-purple-400/30'
+                                  : isDark ? 'bg-white/8 text-white/40' : 'bg-gray-200 text-gray-500'
+                              }`}>
+                                {p.isSpeaking && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+                                {isMe ? 'You' : (p.userId ? toAnonDisplay(p.userId, currentUserId, userName) : p.name)}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <p className={`text-[10px] mt-0.5 leading-relaxed ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                      Speaks in turns · Raise hand → wait for queue → 3 min slot
-                    </p>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Debater */}
-                <div className={`rounded-xl p-3 flex items-start gap-2.5 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'debater' ? `border ${isDark ? 'border-orange-400/30' : 'border-orange-300/50'}` : ''}`}>
-                  <div className="w-7 h-7 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                    <Volume2 className="w-3.5 h-3.5 text-orange-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className={`text-[11px] font-bold ${theme.textColor}`}>Debater</p>
-                      {userRole === 'debater' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-bold">You</span>}
+                {(() => {
+                  const debaters = uniqueParticipants.filter(p => p.role === 'debater');
+                  return (
+                    <div className={`rounded-xl p-3 ${isDark ? 'bg-white/4' : 'bg-gray-50'} ${userRole === 'debater' ? `border ${isDark ? 'border-orange-400/30' : 'border-orange-300/50'}` : ''}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0">
+                          <Volume2 className="w-3 h-3 text-orange-400" />
+                        </div>
+                        <p className={`text-[11px] font-bold ${theme.textColor}`}>Debater</p>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ml-auto ${isDark ? 'bg-white/10 text-white/40' : 'bg-gray-200 text-gray-500'}`}>{debaters.length}</span>
+                      </div>
+                      {debaters.length === 0 ? (
+                        <p className={`text-[10px] ${isDark ? 'text-white/25' : 'text-gray-400'}`}>No debaters yet</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {debaters.map(p => {
+                            const isMe = p.userId === currentUserId || p.id === String(toAgoraUid(currentUserId));
+                            return (
+                              <span key={p.id} className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                isMe
+                                  ? 'bg-orange-500/25 text-orange-400 border border-orange-400/30'
+                                  : isDark ? 'bg-white/8 text-white/40' : 'bg-gray-200 text-gray-500'
+                              }`}>
+                                {p.isSpeaking && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+                                {isMe ? 'You' : (p.userId ? toAnonDisplay(p.userId, currentUserId, userName) : p.name)}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <p className={`text-[10px] mt-0.5 leading-relaxed ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                      Open mic anytime · No queue · Full debate access
-                    </p>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -649,7 +705,6 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
             </div>
           </div>
         </div>
-      </div>
       </div>
 
       {/* ── My Turn Modal ── */}
