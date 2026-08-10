@@ -1,7 +1,11 @@
-import { Headphones, Mic, Scale, ArrowLeft } from 'lucide-react';
+import { Headphones, Mic, Scale, ArrowLeft, Loader, AlertCircle } from 'lucide-react';
 import { Theme, Role, Discussion } from '../types';
 import { themes } from '../config/themes';
 import { motion } from 'motion/react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface RoleSelectionPageProps {
   discussion: Discussion;
@@ -18,6 +22,39 @@ export function RoleSelectionPage({
 }: RoleSelectionPageProps) {
   const theme = themes[currentTheme];
   const isDuneli = currentTheme === 'duneli';
+
+  // ── Check if user already joined this meeting with a role ──
+  const [checkingRole, setCheckingRole] = useState(true);
+  const [existingRole, setExistingRole] = useState<Role | null>(null);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) { setCheckingRole(false); return; }
+        const res = await fetch(`${API_URL}/api/discussions/${discussion.id}/my-role`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (res.ok) {
+          const d = await res.json();
+          if (d.role) {
+            setExistingRole(d.role as Role);
+            // Auto-redirect to same role
+            onSelectRole(d.role as Role);
+            return;
+          }
+        }
+      } catch { /* no role found */ }
+      setCheckingRole(false);
+    };
+    check();
+  }, [discussion.id]);
+
+  if (checkingRole) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader className="w-8 h-8 animate-spin text-indigo-500" />
+    </div>
+  );
 
   const roles = [
     {

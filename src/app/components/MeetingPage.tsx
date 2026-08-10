@@ -176,9 +176,11 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
           client.on('user-unpublished', (u, mt) => { if (mt === 'audio') setParticipants(prev => prev.map(p => p.id === String(u.uid) ? { ...p, isSpeaking: false } : p)); });
         }
 
-        // Backend join
+        // Backend join — pass role so it gets locked in DB
         if (session?.access_token) fetch(`${API_URL}/api/discussions/${discussion.id}/join`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ role: userRole }),
         }).catch(() => {});
 
         // Supabase Presence — send anonymousId, NOT real name
@@ -231,10 +233,6 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
             }
           });
         realtimeRef.current = channel;
-
-        if (session?.access_token) fetch(`${API_URL}/api/discussions/${discussion.id}/join`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        }).catch(() => {});
 
       } catch (err: any) { if (!cancelled) setAgoraError(err.message || 'Failed to join audio'); }
     };
@@ -498,8 +496,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                         <div className="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
                           <Headphones className="w-3 h-3 text-blue-400" />
                         </div>
-                        <p className={`text-[11px] font-bold ${theme.textColor}`}>Listener</p>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ml-auto ${isDark ? 'bg-white/10 text-white/40' : 'bg-gray-200 text-gray-500'}`}>{listeners.length}</span>
+                        <p className={`text-[11px] font-bold ${isDark ? 'text-white' : 'text-gray-800'}`}>Listener</p>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ml-auto font-bold ${isDark ? 'bg-white/10 text-white/60' : 'bg-gray-200 text-gray-600'}`}>{listeners.length}</span>
                       </div>
                       {listeners.length === 0 ? (
                         <p className={`text-[10px] ${isDark ? 'text-white/25' : 'text-gray-400'}`}>No listeners yet</p>
@@ -532,8 +530,8 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                         <div className="w-6 h-6 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
                           <Mic className="w-3 h-3 text-purple-400" />
                         </div>
-                        <p className={`text-[11px] font-bold ${theme.textColor}`}>Speaker</p>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ml-auto ${isDark ? 'bg-white/10 text-white/40' : 'bg-gray-200 text-gray-500'}`}>{speakers.length}</span>
+                        <p className={`text-[11px] font-bold ${isDark ? 'text-white' : 'text-gray-800'}`}>Speaker</p>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ml-auto font-bold ${isDark ? 'bg-white/10 text-white/60' : 'bg-gray-200 text-gray-600'}`}>{speakers.length}</span>
                       </div>
                       {speakers.length === 0 ? (
                         <p className={`text-[10px] ${isDark ? 'text-white/25' : 'text-gray-400'}`}>No speakers yet</p>
