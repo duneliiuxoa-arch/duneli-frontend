@@ -234,7 +234,16 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
           });
         realtimeRef.current = channel;
 
-      } catch (err: any) { if (!cancelled) setAgoraError(err.message || 'Failed to join audio'); }
+      } catch (err: any) {
+        if (!cancelled) {
+          // Don't show mic errors as fatal — user can still participate as listener
+          console.warn('Agora join warning:', err.message);
+          if (err.message?.includes('permission') || err.message?.includes('token') || err.message?.includes('not active')) {
+            setAgoraError(err.message);
+          }
+          // For mic/publish errors, silently continue
+        }
+      }
     };
     join();
     return () => {

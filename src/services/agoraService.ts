@@ -12,21 +12,25 @@ let localAudioTrack: MicrophoneTrack | null = null;
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-// ── Helper: Supabase UUID → unique numeric Agora UID ────────
-// Add timestamp component to avoid UID_CONFLICT when same user opens multiple tabs
+// ── Per-tab unique salt → prevents UID_CONFLICT ─────────────
+const _getTabSalt = (): number => {
+  const key = '_agora_uid_salt';
+  let salt = parseInt(sessionStorage.getItem(key) || '0');
+  if (!salt) {
+    salt = (Date.now() % 50000) + Math.floor(Math.random() * 10000) + 1;
+    sessionStorage.setItem(key, String(salt));
+  }
+  return salt;
+};
+
+// ── Supabase UUID → unique numeric Agora UID ────────────────
 export const toAgoraUid = (userId: string): number => {
   let hash = 0;
   for (let i = 0; i < userId.length; i++) {
     hash = ((hash << 5) - hash) + userId.charCodeAt(i);
     hash |= 0;
   }
-  // Add small random component to avoid same-user multi-tab conflict
-  const tabSalt = parseInt(sessionStorage.getItem('_agora_tab_salt') || '0') || (() => {
-    const s = Math.floor(Math.random() * 999) + 1;
-    sessionStorage.setItem('_agora_tab_salt', String(s));
-    return s;
-  })();
-  return Math.abs((hash + tabSalt) % 99000) + 1000; // always 4-5 digit positive
+  return Math.abs((Math.abs(hash) + _getTabSalt()) % 900000) + 100000;
 };
 
 // ── Get token from Duneli backend ────────────────────────────
@@ -41,7 +45,6 @@ export const getAgoraToken = async (
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ channelName, userId: toAgoraUid(userId), role }),
     });
-
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const msg = (err as any).error || (err as any).message || res.statusText;
@@ -51,7 +54,6 @@ export const getAgoraToken = async (
       if (res.status === 500) throw new Error('Audio server error — AGORA_APP_CERTIFICATE not set on server.');
       throw new Error(msg || 'Failed to generate audio token. Please try again.');
     }
-
     const data = await res.json();
     return data.token || null;
   } catch (error: any) {
@@ -67,30 +69,37 @@ export const joinAgoraChannel = async (
   role: 'listener' | 'speaker' | 'debater'
 ): Promise<AgoraClient> => {
   try {
-    const token     = await getAgoraToken(channelName, userId, role);
+    // Always clean up before joining — prevents UID_CONFLICT on rejoin
+    if (agoraClient) {
+      try { await agoraClient.leave(); agoraClient.removeAllListeners(); } catch { }
+      agoraClient = null;
+    }
+    if (localAudioTrack) {
+      try { localAudioTrack.stop(); localAudioTrack.close(); } catch { }
+      localAudioTrack = null;
+    }
+
+    const token      = await getAgoraToken(channelName, userId, role);
     const numericUid = toAgoraUid(userId);
 
-    if (!agoraClient) {
-      agoraClient = createAgoraClient();
-
-      agoraClient.on('user-published', async (user, mediaType) => {
-        await agoraClient?.subscribe(user, mediaType);
-        if (mediaType === 'audio') user.audioTrack?.play();
-      });
-      agoraClient.on('user-unpublished', (user, mediaType) => {
-        if (mediaType === 'audio') user.audioTrack?.stop();
-      });
-      agoraClient.on('connection-state-change', (cur, prev, reason) => {
-        console.log(`Agora: ${prev} → ${cur} (${reason})`);
-      });
-      agoraClient.on('exception', (event) => {
-        console.error('Agora exception:', event);
-      });
-    }
+    agoraClient = createAgoraClient();
+    agoraClient.on('user-published', async (user, mediaType) => {
+      await agoraClient?.subscribe(user, mediaType);
+      if (mediaType === 'audio') user.audioTrack?.play();
+    });
+    agoraClient.on('user-unpublished', (user, mediaType) => {
+      if (mediaType === 'audio') user.audioTrack?.stop();
+    });
+    agoraClient.on('connection-state-change', (cur, prev, reason) => {
+      console.log(`Agora: ${prev} → ${cur} (${reason})`);
+    });
+    agoraClient.on('exception', (event) => {
+      console.error('Agora exception:', event);
+    });
 
     await agoraClient.join(AGORA_APP_ID, channelName, token || null, numericUid);
 
-    // Speakers & debaters get mic (muted by default)
+    // Speakers & debaters get mic track (muted by default)
     if (role === 'speaker' || role === 'debater') {
       localAudioTrack = await createMicrophoneTrack();
       await agoraClient.publish([localAudioTrack]);
@@ -119,8 +128,17 @@ export const leaveAgoraChannel = async (): Promise<void> => {
 
 // ── Mic toggle ────────────────────────────────────────────────
 export const toggleMicrophone = async (enabled: boolean): Promise<void> => {
-  if (!localAudioTrack) throw new Error('Microphone not available. Are you a Speaker or Debater?');
+  if (!localAudioTrack) {
+    console.warn('toggleMicrophone: no localAudioTrack, skipping');
+    return;
+  }
   await localAudioTrack.setEnabled(enabled);
+  if (enabled && agoraClient) {
+    try {
+      const isPublished = (agoraClient as any).localTracks?.includes(localAudioTrack);
+      if (!isPublished) await agoraClient.publish([localAudioTrack]);
+    } catch { /* already published */ }
+  }
 };
 
 // ── Getters ───────────────────────────────────────────────────
