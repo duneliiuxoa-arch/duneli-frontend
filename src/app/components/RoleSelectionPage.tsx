@@ -19,22 +19,9 @@ export function RoleSelectionPage({ discussion, currentTheme, onSelectRole, onBa
   const [checkingRole, setCheckingRole] = useState(true);
 
   useEffect(() => {
-    const check = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) { setCheckingRole(false); return; }
-        const res = await fetch(`${API_URL}/api/discussions/${discussion.id}/my-role`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (res.ok) {
-          const d = await res.json();
-          if (d.role) { onSelectRole(d.role as Role); return; }
-        }
-      } catch { }
-      setCheckingRole(false);
-    };
-    check();
-  }, [discussion.id]);
+    // Always show role selection — user chooses fresh every time
+    setCheckingRole(false);
+  }, []);
 
   if (checkingRole) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#f8f7ff' }}>

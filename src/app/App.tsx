@@ -280,23 +280,23 @@ export default function App() {
   };
 
   const handleJoinDiscussion = (discussionId: string) => {
-    // ── Auth guard — login required to join ──────────────────
+    // ── Auth guard ──
     if (!supabaseAuth.user || supabaseAuth.user.isGuest) {
       setShowLoginModal(true);
       return;
     }
-
     const discussion = discussions.find(d => d.id === discussionId);
     if (discussion) {
       setSelectedDiscussion(discussion);
-      setCurrentPage('roleSelection');
-      joinMeeting(discussionId);
+      setCurrentPage('roleSelection'); // → Role selection pehle, meeting baad mein
     }
   };
 
   const handleSelectRole = (role: Role) => {
     setSelectedRole(role);
     setCurrentPage('meeting');
+    // Join meeting API tabhi call karo jab role select ho
+    if (selectedDiscussion) joinMeeting(selectedDiscussion.id);
   };
 
   const handleLeaveMeeting = () => {
