@@ -12,14 +12,21 @@ let localAudioTrack: MicrophoneTrack | null = null;
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-// ── Helper: Supabase UUID → consistent numeric Agora UID ─────
+// ── Helper: Supabase UUID → unique numeric Agora UID ────────
+// Add timestamp component to avoid UID_CONFLICT when same user opens multiple tabs
 export const toAgoraUid = (userId: string): number => {
   let hash = 0;
   for (let i = 0; i < userId.length; i++) {
     hash = ((hash << 5) - hash) + userId.charCodeAt(i);
     hash |= 0;
   }
-  return Math.abs(hash) % 100000;
+  // Add small random component to avoid same-user multi-tab conflict
+  const tabSalt = parseInt(sessionStorage.getItem('_agora_tab_salt') || '0') || (() => {
+    const s = Math.floor(Math.random() * 999) + 1;
+    sessionStorage.setItem('_agora_tab_salt', String(s));
+    return s;
+  })();
+  return Math.abs((hash + tabSalt) % 99000) + 1000; // always 4-5 digit positive
 };
 
 // ── Get token from Duneli backend ────────────────────────────

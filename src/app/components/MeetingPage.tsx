@@ -380,23 +380,31 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
   const raisedHands        = uniqueParticipants.filter(p => p.handRaised);
   const currentSpeaker     = uniqueParticipants.find(p => p.isSpeaking);
 
+  // ── Bright light theme (fixed) ────────────────────────────
+  const bg       = 'linear-gradient(160deg, #f8f7ff 0%, #eef2ff 50%, #faf5ff 100%)';
+  const cardBg   = 'rgba(255,255,255,0.85)';
+  const border   = '#e5e7f0';
+  const txt      = '#1A1A2E';
+  const txtMuted = 'rgba(26,26,46,0.5)';
+  const accent   = '#3B5BF6';
+
   return (
-    <div className={`h-screen w-full overflow-hidden ${theme.textColor} flex flex-col select-none`}
-      style={{ background: theme.background, fontFamily: 'var(--font-body)' }}>
+    <div className="h-screen w-full overflow-hidden flex flex-col select-none"
+      style={{ background: bg, fontFamily: 'Plus Jakarta Sans, sans-serif', color: txt }}>
 
       {/* ── Top Bar ── */}
-      <div className={`${theme.cardStyle} px-6 py-3 shrink-0 border-b ${borderC}`}>
+      <div className="px-6 py-3 shrink-0 border-b" style={{ background: cardBg, borderColor: border, backdropFilter: 'blur(12px)' }}>
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-full font-medium flex-shrink-0">
               <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-white" /></span>
               <Radio className="w-3.5 h-3.5" /><span className="text-xs font-black">LIVE</span>
             </div>
-            <h1 className={`font-extrabold text-base sm:text-lg truncate ${theme.textColor}`}>{discussion.title}</h1>
+            <h1 className="font-extrabold text-base sm:text-lg truncate" style={{ color: txt }}>{discussion.title}</h1>
           </div>
-          <div className={`flex items-center gap-5 text-xs sm:text-sm font-semibold ${theme.textColor} opacity-80 shrink-0`}>
+          <div className="flex items-center gap-5 text-xs sm:text-sm font-semibold shrink-0" style={{ color: txtMuted }}>
             <div className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-amber-400" /><span>{formatTime(elapsedTime)}</span></div>
-            <div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-[#3B5BF6]" /><span>{uniqueParticipants.length} listening</span></div>
+            <div className="flex items-center gap-1.5"><Users className="w-4 h-4" style={{ color: accent }} /><span>{uniqueParticipants.length} listening</span></div>
           </div>
         </div>
       </div>
