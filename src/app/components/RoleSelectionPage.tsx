@@ -114,8 +114,8 @@ export function RoleSelectionPage({ discussion, currentTheme, onSelectRole, onBa
         </div>
       </div>
 
-      {/* Cards — fill remaining height */}
-      <div className="flex-1 grid grid-cols-3 gap-4 px-6 pb-4 min-h-0">
+      {/* Cards */}
+      <div className="flex-1 grid grid-cols-3 gap-4 px-6 pb-4 min-h-0 items-start">
         {roles.map((role, i) => (
           <motion.div key={role.id}
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
