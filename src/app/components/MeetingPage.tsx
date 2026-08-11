@@ -165,11 +165,11 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
           // Existing remote users
           client.remoteUsers.forEach(u => setParticipants(prev =>
             prev.find(p => p.id === String(u.uid)) ? prev : [...prev, {
-              id: String(u.uid), name: `DNL-...`, role: 'listener' as Role, isSpeaking: false, handRaised: false,
+              id: String(u.uid), name: `DNL-${String(u.uid).slice(-4).toUpperCase()}`, role: 'listener' as Role, isSpeaking: false, handRaised: false,
             }]));
           client.on('user-joined', u => setParticipants(prev =>
             prev.find(p => p.id === String(u.uid)) ? prev : [...prev, {
-              id: String(u.uid), name: `DNL-...`, role: 'listener' as Role, isSpeaking: false, handRaised: false,
+              id: String(u.uid), name: `DNL-${String(u.uid).slice(-4).toUpperCase()}`, role: 'listener' as Role, isSpeaking: false, handRaised: false,
             }]));
           client.on('user-left',        u  => setParticipants(prev => prev.filter(p => p.id !== String(u.uid))));
           client.on('user-published',   (u, mt) => { if (mt === 'audio') setParticipants(prev => prev.map(p => p.id === String(u.uid) ? { ...p, isSpeaking: true  } : p)); });
