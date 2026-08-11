@@ -1,4 +1,4 @@
-import { Headphones, Mic, Scale, ArrowLeft, Loader, AlertCircle } from 'lucide-react';
+import { Headphones, Mic, Scale, ArrowLeft, Loader } from 'lucide-react';
 import { Theme, Role, Discussion } from '../types';
 import { themes } from '../config/themes';
 import { motion } from 'motion/react';
@@ -14,18 +14,9 @@ interface RoleSelectionPageProps {
   onBack: () => void;
 }
 
-export function RoleSelectionPage({ 
-  discussion, 
-  currentTheme, 
-  onSelectRole,
-  onBack 
-}: RoleSelectionPageProps) {
-  const theme = themes[currentTheme];
-  const isDuneli = currentTheme === 'duneli';
+export function RoleSelectionPage({ discussion, currentTheme, onSelectRole, onBack }: RoleSelectionPageProps) {
 
-  // ── Check if user already joined this meeting with a role ──
   const [checkingRole, setCheckingRole] = useState(true);
-  const [existingRole, setExistingRole] = useState<Role | null>(null);
 
   useEffect(() => {
     const check = async () => {
@@ -37,21 +28,16 @@ export function RoleSelectionPage({
         });
         if (res.ok) {
           const d = await res.json();
-          if (d.role) {
-            setExistingRole(d.role as Role);
-            // Auto-redirect to same role
-            onSelectRole(d.role as Role);
-            return;
-          }
+          if (d.role) { onSelectRole(d.role as Role); return; }
         }
-      } catch { /* no role found */ }
+      } catch { }
       setCheckingRole(false);
     };
     check();
   }, [discussion.id]);
 
   if (checkingRole) return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#f8f7ff' }}>
       <Loader className="w-8 h-8 animate-spin text-indigo-500" />
     </div>
   );
@@ -60,189 +46,127 @@ export function RoleSelectionPage({
     {
       id: 'listener' as Role,
       icon: Headphones,
-      title: 'Listener 🎧',
+      emoji: '🎧',
+      title: 'Listener',
       subtitle: 'Only Able to Listen',
-      titleColor: 'text-[#7C3AED]',
-      iconBg: 'from-[#7C3AED] to-[#a855f7]',
-      buttonStyle: 'bg-gradient-to-r from-[#7C3AED] to-[#a855f7]',
-      shadowColor: 'shadow-purple-200',
-      description: 'Join with 0% pressure. Microphone is locked OFF so you can listen silently.',
-      permissions: [
-        'Only able to listen (Mic locked OFF)',
-        'Zero pressure, silent spectator mode',
-        'React to ideas with 👍 / 👎',
-        'Raise hand to request speaking time'
-      ]
+      grad: 'linear-gradient(135deg, #7C3AED, #a855f7)',
+      btn: 'linear-gradient(135deg, #7C3AED, #a855f7)',
+      glow: 'rgba(124,58,237,0.15)',
+      border: '#c4b5fd',
+      perms: ['Mic locked OFF — zero pressure', 'Silent spectator mode', 'React to ideas 👍 / 👎', 'Raise hand to request speaking'],
     },
     {
       id: 'speaker' as Role,
       icon: Mic,
-      title: 'Speaker 🎙️',
+      emoji: '🎙️',
+      title: 'Speaker',
       subtitle: 'Speaks On Their Turn',
-      titleColor: 'text-[#3B5BF6]',
-      iconBg: 'from-[#3B5BF6] to-[#6366f1]',
-      buttonStyle: 'bg-gradient-to-r from-[#3B5BF6] to-[#6366f1]',
-      shadowColor: 'shadow-blue-200',
-      description: 'Speaks when your turn comes in an orderly, turn-based queue.',
-      permissions: [
-        'Speaks on your turn when queue arrives',
-        '3-minute live speaking timer',
-        'Timer shown on screen during turn',
-        'Auto-muted when turn ends',
-        'Return to Listener after speaking'
-      ]
+      grad: 'linear-gradient(135deg, #3B5BF6, #6366f1)',
+      btn: 'linear-gradient(135deg, #3B5BF6, #6366f1)',
+      glow: 'rgba(59,91,246,0.15)',
+      border: '#a5b4fc',
+      perms: ['Queue-based speaking turns', '3-minute live timer per turn', 'Auto-muted when turn ends', 'Return to Listener after'],
     },
     {
       id: 'debater' as Role,
       icon: Scale,
-      title: 'Debater ⚡',
+      emoji: '⚡',
+      title: 'Debater',
       subtitle: 'Speaks Anytime',
-      titleColor: 'text-[#F97316]',
-      iconBg: 'from-[#F97316] to-[#ef4444]',
-      buttonStyle: 'bg-gradient-to-r from-[#F97316] to-[#ef4444]',
-      shadowColor: 'shadow-orange-200',
-      description: 'Speaks anytime with open microphone access throughout the debate.',
-      permissions: [
-        'Speaks anytime (Open mic access)',
-        'Mute / unmute freely at any moment',
-        'No turn limits or waiting queues',
-        'Active real-time debate encouraged'
-      ]
-    }
+      grad: 'linear-gradient(135deg, #F97316, #ef4444)',
+      btn: 'linear-gradient(135deg, #F97316, #ef4444)',
+      glow: 'rgba(249,115,22,0.15)',
+      border: '#fdba74',
+      perms: ['Open mic — speak anytime', 'Mute / unmute freely', 'No turn limits or queues', 'Active real-time debate'],
+    },
   ];
 
   return (
-    <div
-      className={`min-h-screen ${isDuneli ? 'text-[#1A1A2E]' : theme.textColor}`}
-      style={{
-        background: isDuneli
-          ? 'linear-gradient(160deg, #f8f7ff 0%, #eef2ff 40%, #f0f7ff 70%, #faf5ff 100%)'
-          : theme.background,
-        fontFamily: 'Plus Jakarta Sans, sans-serif',
-      }}
-    >
-      {/* Decorative blobs for duneli */}
-      {isDuneli && (
-        <>
-          <div className="fixed top-0 right-0 w-96 h-96 rounded-full opacity-20 blur-3xl pointer-events-none"
-            style={{ background: 'radial-gradient(circle, #7C3AED, transparent)', transform: 'translate(30%, -30%)' }} />
-          <div className="fixed bottom-0 left-0 w-80 h-80 rounded-full opacity-15 blur-3xl pointer-events-none"
-            style={{ background: 'radial-gradient(circle, #3B5BF6, transparent)', transform: 'translate(-30%, 30%)' }} />
-        </>
-      )}
+    <div className="h-screen w-screen overflow-hidden flex flex-col"
+      style={{ background: 'linear-gradient(160deg,#f8f7ff 0%,#eef2ff 50%,#faf5ff 100%)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
 
-      <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10 relative">
-        {/* Back Button */}
-        <button
-          onClick={onBack}
-          className={`mb-8 flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all hover:scale-105 ${
-            isDuneli
-              ? 'bg-white border border-blue-100 text-[#1A1A2E] shadow-sm hover:shadow-md'
-              : `${theme.cardStyle} hover:scale-105`
-          }`}
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Homepage</span>
+      {/* Blobs */}
+      <div className="fixed top-0 right-0 w-[500px] h-[500px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle,rgba(124,58,237,0.12),transparent 70%)', transform: 'translate(20%,-20%)' }} />
+      <div className="fixed bottom-0 left-0 w-[400px] h-[400px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle,rgba(59,91,246,0.10),transparent 70%)', transform: 'translate(-20%,20%)' }} />
+
+      {/* Back */}
+      <div className="px-6 pt-4 shrink-0">
+        <button onClick={onBack}
+          className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[#1A1A2E]/70 bg-white border border-gray-200 shadow-sm hover:shadow-md hover:scale-105 transition-all">
+          <ArrowLeft className="w-4 h-4" /> Back to Homepage
         </button>
+      </div>
 
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-10"
-        >
-          <h1
-            className={`text-3xl sm:text-5xl font-black mb-4 ${isDuneli ? 'text-[#1A1A2E]' : theme.textColor}`}
-            style={{ letterSpacing: '-0.02em' }}
-          >
-            How would you like to join?
-          </h1>
+      {/* Header */}
+      <div className="text-center px-4 pt-3 pb-2 shrink-0">
+        <h1 className="text-3xl sm:text-4xl font-black text-[#1A1A2E] mb-2" style={{ letterSpacing: '-0.02em' }}>
+          How would you like to join?
+        </h1>
+        {/* Discussion pill */}
+        <div className="inline-flex items-center gap-3 bg-white border border-blue-100 shadow px-5 py-2 rounded-2xl text-sm text-[#1A1A2E]/70 font-medium">
+          <span className="font-bold text-[#1A1A2E]">{discussion.title}</span>
+          <span className="text-gray-300">·</span>
+          <span>{discussion.category}</span>
+          <span className="text-gray-300">·</span>
+          <span>{discussion.listenerCount || 0} listening</span>
+        </div>
+      </div>
 
-          {/* Discussion Info */}
-          <div className={`rounded-2xl p-5 mt-6 max-w-2xl mx-auto ${
-            isDuneli
-              ? 'bg-white border border-blue-100 shadow-lg shadow-blue-50'
-              : `${theme.cardStyle}`
-          }`}>
-            {isDuneli && <div className="h-0.5 w-full mb-4 -mt-5 -mx-5 rounded-t-2xl"
-              style={{ background: 'linear-gradient(90deg, #3B5BF6, #7C3AED, #F97316)', width: 'calc(100% + 40px)' }} />}
-            <h2 className={`text-lg font-bold mb-2 ${isDuneli ? 'text-[#1A1A2E]' : theme.textColor}`}>
-              {discussion.title}
-            </h2>
-            <div className={`flex items-center justify-center flex-wrap gap-3 text-sm ${isDuneli ? 'text-[#1A1A2E]/50' : `${theme.textColor} opacity-70`}`}>
-              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                isDuneli ? 'bg-blue-50 text-[#3B5BF6] border border-blue-100' : `${theme.cardStyle}`
-              }`}>
-                {discussion.category}
-              </span>
-              <span>· {discussion.listenerCount} listening</span>
-              <span>· Hosted by {discussion.hostName}</span>
-            </div>
-          </div>
-        </motion.div>
+      {/* Cards — fill remaining height */}
+      <div className="flex-1 grid grid-cols-3 gap-4 px-6 pb-4 min-h-0">
+        {roles.map((role, i) => (
+          <motion.div key={role.id}
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
+            className="flex flex-col rounded-3xl overflow-hidden"
+            style={{ background: '#fff', border: `1.5px solid ${role.border}`, boxShadow: `0 4px 24px ${role.glow}` }}>
 
-        {/* Role Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-          {roles.map((role, index) => (
-            <motion.button
-              key={role.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              onClick={() => onSelectRole(role.id)}
-              className={`text-left rounded-3xl p-7 transition-all hover:scale-105 group ${
-                isDuneli
-                  ? 'bg-white border border-blue-100/70 shadow-lg hover:shadow-xl shadow-blue-50/50 hover:shadow-blue-100/50'
-                  : `${theme.cardStyle}`
-              }`}
-            >
-              {/* Icon */}
-              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${role.iconBg} flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform`}>
-                <role.icon className="w-7 h-7 text-white" />
+            {/* Top accent line */}
+            <div className="h-1 w-full shrink-0" style={{ background: role.grad }} />
+
+            <div className="flex flex-col flex-1 p-5 min-h-0">
+              {/* Icon + title */}
+              <div className="flex items-center gap-3 mb-3 shrink-0">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-md"
+                  style={{ background: role.grad }}>
+                  <role.icon className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-[#1A1A2E] leading-tight">
+                    {role.title} {role.emoji}
+                  </h3>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-[#1A1A2E]/60">
+                    {role.subtitle}
+                  </span>
+                </div>
               </div>
-
-              {/* Title */}
-              <h3
-                className={`text-2xl font-black mb-1 ${isDuneli ? role.titleColor : theme.textColor}`}
-                style={{ letterSpacing: '-0.02em' }}
-              >
-                {role.title}
-              </h3>
-              <div className="inline-block px-3 py-1 rounded-lg bg-blue-50 border border-blue-100 font-extrabold text-xs mb-3 text-[#1A1A2E]/80">
-                {role.subtitle}
-              </div>
-              <p className={`text-sm mb-5 ${isDuneli ? 'text-[#1A1A2E]/60' : `${theme.textColor} opacity-80`}`}>
-                {role.description}
-              </p>
 
               {/* Permissions */}
-              <div className="space-y-1.5 mb-6">
-                {role.permissions.map((permission, idx) => (
-                  <div key={idx} className={`flex items-start gap-2 text-xs ${isDuneli ? 'text-[#1A1A2E]/60' : `${theme.textColor} opacity-70`}`}>
-                    <span className="text-green-500 mt-0.5 font-bold">✓</span>
-                    <span>{permission}</span>
+              <div className="flex-1 space-y-2 min-h-0 overflow-hidden">
+                {role.perms.map((p, idx) => (
+                  <div key={idx} className="flex items-start gap-2">
+                    <span className="text-green-500 font-bold text-sm shrink-0 mt-0.5">✓</span>
+                    <span className="text-xs text-[#1A1A2E]/65 leading-snug font-medium">{p}</span>
                   </div>
                 ))}
               </div>
 
-              {/* Select Button */}
-              <div className={`w-full py-3 rounded-2xl text-center text-sm font-bold text-white shadow-lg ${role.shadowColor} ${role.buttonStyle}`}>
-                Select {role.title}
-              </div>
-            </motion.button>
-          ))}
-        </div>
-
-        {/* Info Note */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className={`text-center text-sm ${isDuneli ? 'text-[#1A1A2E]/40' : `${theme.textColor} opacity-60`}`}
-        >
-          <p>You can change your role or leave the discussion at any time.</p>
-        </motion.div>
+              {/* Button */}
+              <button onClick={() => onSelectRole(role.id)}
+                className="mt-4 w-full py-3 rounded-2xl text-sm font-extrabold text-white shadow-lg hover:scale-105 active:scale-95 transition-all shrink-0"
+                style={{ background: role.btn }}>
+                Select {role.title} {role.emoji}
+              </button>
+            </div>
+          </motion.div>
+        ))}
       </div>
+
+      {/* Footer note */}
+      <p className="text-center text-xs text-[#1A1A2E]/35 pb-3 shrink-0 font-medium">
+        You can change your role or leave at any time.
+      </p>
     </div>
   );
 }
