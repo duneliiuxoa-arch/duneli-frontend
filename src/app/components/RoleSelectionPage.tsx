@@ -115,11 +115,11 @@ export function RoleSelectionPage({ discussion, currentTheme, onSelectRole, onBa
       </div>
 
       {/* Cards */}
-      <div className="flex-1 grid grid-cols-3 gap-4 px-6 pb-4 min-h-0 items-start">
+      <div className="flex-1 grid grid-cols-3 gap-4 px-6 pb-5 min-h-0">
         {roles.map((role, i) => (
           <motion.div key={role.id}
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
-            className="flex flex-col rounded-3xl overflow-hidden"
+            className="flex flex-col rounded-3xl overflow-hidden h-full"
             style={{ background: '#fff', border: `1.5px solid ${role.border}`, boxShadow: `0 4px 24px ${role.glow}` }}>
 
             {/* Top accent line */}
@@ -152,9 +152,9 @@ export function RoleSelectionPage({ discussion, currentTheme, onSelectRole, onBa
                 ))}
               </div>
 
-              {/* Button */}
+              {/* Button — always at bottom */}
               <button onClick={() => onSelectRole(role.id)}
-                className="mt-4 w-full py-3 rounded-2xl text-sm font-extrabold text-white shadow-lg hover:scale-105 active:scale-95 transition-all shrink-0"
+                className="mt-auto pt-4 w-full py-3 rounded-2xl text-sm font-extrabold text-white shadow-lg hover:scale-105 active:scale-95 transition-all shrink-0"
                 style={{ background: role.btn }}>
                 Select {role.title} {role.emoji}
               </button>
