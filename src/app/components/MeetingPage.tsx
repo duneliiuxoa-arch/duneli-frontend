@@ -12,8 +12,106 @@ import {
 import { transcriptionService } from '../../services/transcriptionService';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const SPEAK_LIMIT    = 180; // 3 min
-const TURN_COUNTDOWN = 10;  // 10 sec to accept turn
+const SPEAK_LIMIT    = 180;
+const TURN_COUNTDOWN = 10;
+
+// ── Mic Visualizer Component ─────────────────────────────────
+function MicVisualizer({ active }: { active: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef   = useRef<number>(0);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef   = useRef<MediaStreamAudioSourceNode | null>(null);
+  const ctxRef      = useRef<AudioContext | null>(null);
+  const streamRef   = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      // Stop visualizer
+      cancelAnimationFrame(animRef.current);
+      if (streamRef.current)  { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+      if (sourceRef.current)  { sourceRef.current.disconnect(); sourceRef.current = null; }
+      if (ctxRef.current)     { ctxRef.current.close().catch(() => {}); ctxRef.current = null; }
+      analyserRef.current = null;
+      // Clear canvas
+      const canvas = canvasRef.current;
+      if (canvas) { const c = canvas.getContext('2d'); if (c) { c.clearRect(0, 0, canvas.width, canvas.height); } }
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current  = stream;
+        const audioCtx     = new AudioContext();
+        ctxRef.current     = audioCtx;
+        const analyser     = audioCtx.createAnalyser();
+        analyser.fftSize   = 64;
+        analyserRef.current = analyser;
+        const source       = audioCtx.createMediaStreamSource(stream);
+        sourceRef.current  = source;
+        source.connect(analyser);
+
+        const draw = () => {
+          if (cancelled) return;
+          animRef.current = requestAnimationFrame(draw);
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const ctx    = canvas.getContext('2d');
+          if (!ctx)    return;
+          const W = canvas.width, H = canvas.height;
+          ctx.clearRect(0, 0, W, H);
+
+          const bufLen = analyser.frequencyBinCount;
+          const data   = new Uint8Array(bufLen);
+          analyser.getByteFrequencyData(data);
+
+          const bars    = 20;
+          const barW    = 3;
+          const gap     = 2;
+          const totalW  = bars * (barW + gap);
+          const startX  = (W - totalW) / 2;
+
+          for (let i = 0; i < bars; i++) {
+            const idx      = Math.floor(i * bufLen / bars);
+            const val      = data[idx] / 255;
+            const barH     = Math.max(3, val * H * 0.85);
+            const x        = startX + i * (barW + gap);
+            const y        = (H - barH) / 2;
+            const alpha    = 0.4 + val * 0.6;
+            ctx.fillStyle  = `rgba(59,91,246,${alpha})`;
+            ctx.beginPath();
+            ctx.roundRect(x, y, barW, barH, 2);
+            ctx.fill();
+          }
+        };
+        draw();
+      } catch { /* mic permission denied */ }
+    })();
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animRef.current);
+      if (streamRef.current)  { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+      if (sourceRef.current)  { sourceRef.current.disconnect(); sourceRef.current = null; }
+      if (ctxRef.current)     { ctxRef.current.close().catch(() => {}); ctxRef.current = null; }
+    };
+  }, [active]);
+
+  if (!active) {
+    // Static flat bars when muted
+    return (
+      <div className="flex items-center gap-0.5 h-6">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <div key={i} className="w-[3px] rounded-full bg-gray-300" style={{ height: 3 }} />
+        ))}
+      </div>
+    );
+  }
+
+  return <canvas ref={canvasRef} width={100} height={24} className="block" />;
+}
 
 const toAnonDisplay = (userId: string, myId: string, myName: string): string => {
   if (userId === myId) return myName;
@@ -800,6 +898,19 @@ export function MeetingPage({ discussion, currentTheme, userRole, userName, onLe
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 transition-all hover:scale-105 cursor-pointer">
                 <MicOff className="w-4 h-4" /> Done Speaking
               </button>
+            )}
+            {/* Mic Visualizer — speaker speaking or debater unmuted */}
+            {((userRole === 'speaker' && isSpeaking) || (userRole === 'debater' && !micMuted)) && (
+              <div className="flex flex-col items-start gap-0.5 ml-1">
+                <MicVisualizer active={true} />
+                <span className="text-[9px] font-bold text-indigo-400 tracking-wide">MIC ACTIVE</span>
+              </div>
+            )}
+            {((userRole === 'speaker' && !isSpeaking) || (userRole === 'debater' && micMuted)) && (
+              <div className="flex flex-col items-start gap-0.5 ml-1">
+                <MicVisualizer active={false} />
+                <span className="text-[9px] font-bold text-gray-400 tracking-wide">MIC OFF</span>
+              </div>
             )}
             {/* Listener: Raise hand */}
             {userRole === 'listener' && (
